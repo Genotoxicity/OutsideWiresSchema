@@ -8,19 +8,16 @@ namespace OutsideConnectionsSchema
 {
     public class Script
     {
-        private E3ApplicationInfo applicationInfo;
         private int firstSheetId;
 
         public Script()
         {
-            applicationInfo = new E3ApplicationInfo();
-
         }
         
-        public void Main()
+        public void Main(int processId)
         {
             int electricSchemeTypeCode = 0;
-            E3Project project = new E3Project(applicationInfo.ProcessId);
+            E3Project project = new E3Project(processId);
             Sheet sheet = project.GetSheetById(0);
             E3Text text = project.GetTextById(0);
             HashSet<int> electricSchemeSheetIds = GetElectricSchemeSheetIds(project, sheet, electricSchemeTypeCode);

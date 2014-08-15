@@ -28,7 +28,7 @@ namespace OutsideConnectionsSchema
         private void DoButton_Click(object sender, RoutedEventArgs e)
         {
             Cursor = Cursors.Wait;
-            new Script().Main();
+            new Script().Main(applicationInfo.ProcessId);
             Cursor = Cursors.Arrow;
         }
     }
