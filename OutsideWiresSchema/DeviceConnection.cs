@@ -2,7 +2,7 @@
 
 namespace OutsideConnectionsSchema
 {
-    class DeviceConnection
+    public class DeviceConnection
     {
 
         public int StartDeviceId { get; private set; }

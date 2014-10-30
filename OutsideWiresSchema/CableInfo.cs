@@ -28,5 +28,14 @@ namespace OutsideConnectionsSchema
             Signals = new List<string>();
         }
 
+        public CableInfo(WireCore wire, string lengthAttribute)
+        {
+            Id = wire.Id;
+            Name = wire.Name;
+            Type = String.Intern(wire.WireType);
+            Length = wire.GetAttributeValue(lengthAttribute);
+            Length = String.IsNullOrEmpty(Length) ? "0 м" : Length + " м";
+            Signals = new List<string>();
+        }
     }
 }

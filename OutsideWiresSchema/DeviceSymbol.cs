@@ -49,12 +49,19 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public DeviceSymbol(NormalDevice device )
+        public DeviceSymbol(NormalDevice device, DevicePin pin )
         {
             id = device.Id;
-            Name = device.Name;
             Assignment = String.Intern(device.Assignment);
+            if (String.IsNullOrEmpty(Assignment) && device.GetAttributeValue("IncludeInOWS").Equals("1"))
+                Assignment = String.Intern("AssignmentForConnectiongBox");
+            Name = device.Name;
             isTerminal = device.IsTerminal();
+            if (isTerminal)
+            {
+               pin.Id = device.PinIds.First();
+               Name += ":" + pin.Name;
+            }
             ConnectionIds = new List<int>();
             bigFont = new E3Font(alignment: Alignment.Left);
             smallFont = new E3Font(height: 2.5, alignment: Alignment.Left);
@@ -166,12 +173,10 @@ namespace OutsideConnectionsSchema
             else
                 groupIds = new List<int>(2);
             groupIds.Add(outlineId);
-            SymbolPin pin = (topPins.Count > 0) ? topPins[0] : bottomPins[0];
-            string nameText = String.Format("{0}:{1}", Name, pin.Name);
-            nameWidth = text.GetTextLength(nameText, smallFont);
+            nameWidth = text.GetTextLength(Name, smallFont);
             double top = sheet.MoveUp(position.Y, Size.Height);
             double yText = sheet.MoveDown(top, offset + nameWidth);
-            groupIds.Add(text.CreateVerticalText(sheetId, nameText, xText, yText, smallFont));
+            groupIds.Add(text.CreateVerticalText(sheetId, Name, xText, yText, smallFont));
             foreach (SymbolPin topPin in topPins)
             {
                 int signalTextId = DrawSignalAndSetConnectionPoint(topPin, Level.Top, sheet, text, sheetId, position.Y, top, position.X);

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System;
 using KSPE3Lib;
 
 namespace OutsideConnectionsSchema
@@ -10,6 +11,7 @@ namespace OutsideConnectionsSchema
         private Dictionary<int, List<int>> groupIdsByCableId;
         private Dictionary<int, SymbolGroup> groupById;
         private SchemeLayout layout;
+        private double availableHeight;
         private double gridStep;
 
         public Size Size
@@ -20,10 +22,14 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public Scheme(IEnumerable<int> schemeDeviceIds, Dictionary<int, DeviceSymbol> deviceSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text, double sheetHeight)
+        public string Assignment { get; private set; }
+
+        public Scheme(IEnumerable<int> schemeDeviceIds, Dictionary<int, DeviceSymbol> deviceSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
         {
             gridStep = 4;
+            availableHeight = 272;
             groupById = new Dictionary<int, SymbolGroup>();
+            Assignment = GetAssignment(schemeDeviceIds, deviceSymbolById);
             foreach (int deviceId in schemeDeviceIds)
             {
                 DeviceSymbol deviceSymbol = deviceSymbolById[deviceId];
@@ -46,7 +52,7 @@ namespace OutsideConnectionsSchema
             foreach (SymbolGroup group in groupById.Values)
                 group.SetPosition();
             groupIdsByCableId = GetGroupsByCableId(cableInfoById.Count);
-            layout = new SchemeLayout(groupById, groupIdsByCableId, cableInfoById, gridStep, text, sheetHeight * 0.618);
+            layout = new SchemeLayout(groupById, groupIdsByCableId, cableInfoById, gridStep, text, availableHeight * 0.618);
         }
 
         public void Place(Sheet sheet, Graphic graphic, Group e3group, E3Text text, Point placePositon)
@@ -105,6 +111,34 @@ namespace OutsideConnectionsSchema
                     else
                         groupsIdsByCableId[cableId].Add(group.Id);
             return groupsIdsByCableId;
+        }
+
+        private string GetAssignment(IEnumerable<int> schemeDeviceIds, Dictionary<int, DeviceSymbol> deviceSymbolById)
+        {
+            Dictionary<string, int> assignmentFrequency = new Dictionary<string, int>();
+            foreach (int id in schemeDeviceIds)
+            {
+                DeviceSymbol deviceSymbol = deviceSymbolById[id];
+                string assignment = deviceSymbol.Assignment;
+                if (String.IsNullOrEmpty(assignment))
+                    continue;
+                if (assignmentFrequency.ContainsKey(assignment))
+                    assignmentFrequency[assignment]++;
+                else
+                    assignmentFrequency.Add(assignment, 1);
+            }
+            string mostFrequentAssignment = String.Empty;
+            int max = 0;
+            foreach (string assignment in assignmentFrequency.Keys)
+            {
+                int frequency = assignmentFrequency[assignment];
+                if (frequency > max)
+                {
+                    max = frequency;
+                    mostFrequentAssignment = assignment;
+                }
+            }
+            return mostFrequentAssignment;
         }
     }
 }

@@ -41,7 +41,8 @@
     <ApplicationIcon>Sample.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="KSPE3Lib">
+    <Reference Include="KSPE3Lib, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\KSPE3Lib\KSPE3Lib\bin\Debug\KSPE3Lib.dll</HintPath>
     </Reference>
     <Reference Include="System" />
@@ -74,6 +75,7 @@
     <Compile Include="DeviceSymbol.cs" />
     <Compile Include="SchemeLayout.cs" />
     <Compile Include="Script.cs" />
+    <Compile Include="SpecificationScript.cs" />
     <Compile Include="SymbolGroup.cs" />
     <Compile Include="VerticalConnection.cs" />
     <Page Include="UI.xaml">

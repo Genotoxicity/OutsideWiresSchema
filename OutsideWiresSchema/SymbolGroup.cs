@@ -10,6 +10,7 @@ namespace OutsideConnectionsSchema
     {
         private double gridStep;
         private double width;
+        private double assignmentWidth;
         private string assignment;
         private Dictionary<int, int> matePositionByCableId;
         private int groupPosition;
@@ -120,6 +121,7 @@ namespace OutsideConnectionsSchema
         {
             PlacedPosition = placePosition;
             List<int> ids = new List<int>();
+            ids.AddRange(PlaceAssignmentFrame(placePosition, sheet, graphic, text));
             foreach (CableLayout cableLayout in cableLayoutById.Values)
                 if (cableLayout.Level == Level.Bottom)
                     ids.AddRange(cableLayout.Place(sheet, graphic, placePosition));
@@ -133,7 +135,32 @@ namespace OutsideConnectionsSchema
             group.CreateGroup(ids);
         }
 
-        public void CalculateGroupLayout(SchemeLayout layout, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById)
+        private List<int> PlaceAssignmentFrame(Point placePosition, Sheet sheet, Graphic graphic, E3Text text)
+        {
+            if (String.IsNullOrEmpty(assignment) || assignment.Equals("AssignmentForConnectiongBox"))
+                return new List<int>(0);
+            int sheetId = sheet.Id;
+            List<int> ids = new List<int>(2);
+            ids.Add(graphic.CreateRectangle(sheetId, sheet.MoveLeft(placePosition.X, LeftMargin), sheet.MoveDown(placePosition.Y, BottomMargin), sheet.MoveRight(placePosition.X, RightMargin), sheet.MoveUp(placePosition.Y, TopMargin)));
+            graphic.SetLineStyle(4);
+            E3Font assignmentFont = new E3Font(height: 3);
+            double assignmentTextX;
+            if (assignmentWidth > width)
+            {
+                assignmentFont.alignment = Alignment.Centered;
+                assignmentTextX = sheet.MoveRight(placePosition.X, width / 2);
+            }
+            else
+            {
+                assignmentFont.alignment = Alignment.Right;
+                assignmentTextX = sheet.MoveRight(placePosition.X, width);
+            }
+            double assignmentTextY = sheet.MoveUp(placePosition.Y, TopMargin - (gridStep + assignmentFont.height / 2));
+            ids.Add(text.CreateText(sheetId, "Шкаф " + assignment, assignmentTextX, assignmentTextY, assignmentFont));
+            return ids;
+        }
+
+        public void CalculateGroupLayout(SchemeLayout layout, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
         {
             SortSymbols();
             cableLayoutById = new Dictionary<int, CableLayout>(CableIds.Count);
@@ -159,12 +186,14 @@ namespace OutsideConnectionsSchema
             matePositionByCableId = layout.GetMatePositionByCableId(Id);
             groupPosition = layout.GetGroupPosition(Id);
             AdjustCableLayouts(cableLayoutById, cableSymbolById, cableInfoById);
-            TopMargin = height;
-            BottomMargin = (bottomCableVerticalOffsetByStep.Count > 0) ? bottomCableVerticalOffsetByStep.Last().Value : 0;
+            assignmentWidth = text.GetTextLength("Шкаф " + assignment, new E3Font(height: 3));
+            TopMargin = height + gridStep * 2 + (topCableVerticalOffsetByStep.Count > 0 ? (topCableVerticalOffsetByStep.Last().Value - height) : 0);
+            BottomMargin = ((bottomCableVerticalOffsetByStep.Count > 0) ? bottomCableVerticalOffsetByStep.Last().Value : 0) + gridStep;
+            double additionalAssignmentMargin = (width > assignmentWidth) ? gridStep : (assignmentWidth - width + gridStep / 2); 
             double minCablesOffset = cableLayoutById.Values.Min(cl=>cl.MinOffset);
-            LeftMargin = (minCablesOffset > 0) ? 0 : -minCablesOffset;
+            LeftMargin = ((minCablesOffset > 0) ? 0 : -minCablesOffset) + additionalAssignmentMargin;
             double maxCablesOffset = cableLayoutById.Values.Max(cl => cl.MaxOffset);
-            RightMargin = (width > maxCablesOffset) ? width : maxCablesOffset;
+            RightMargin = ((width > maxCablesOffset) ? width : maxCablesOffset) + additionalAssignmentMargin;
         }
 
         private void SortSymbols()

@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OutsideConnectionsSchema", "OutsideWiresSchema\OutsideConnectionsSchema.csproj", "{C590831A-E5AA-46FA-9737-2381FC09C0BF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KSPE3Lib", "..\KSPE3Lib\KSPE3Lib\KSPE3Lib.csproj", "{D95EAF25-B7F5-4C5C-8968-F49B3EEEE833}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -13,6 +15,10 @@ Global
 		{C590831A-E5AA-46FA-9737-2381FC09C0BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C590831A-E5AA-46FA-9737-2381FC09C0BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C590831A-E5AA-46FA-9737-2381FC09C0BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D95EAF25-B7F5-4C5C-8968-F49B3EEEE833}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D95EAF25-B7F5-4C5C-8968-F49B3EEEE833}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D95EAF25-B7F5-4C5C-8968-F49B3EEEE833}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D95EAF25-B7F5-4C5C-8968-F49B3EEEE833}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

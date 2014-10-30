@@ -71,7 +71,7 @@ namespace OutsideConnectionsSchema
                 }
             }
             cableSymbolById = GetCableSymbolById(topToBottomConnections, text);
-            CalculateLayout();
+            CalculateLayout(text);
         }
 
         private Dictionary<int, Dictionary<int, int>> GetConnectedPositionByIdByCenterId(Level centerGroupLevel, List<Tuple<int, int>> topToBottomConnections)
@@ -262,7 +262,7 @@ namespace OutsideConnectionsSchema
             return Orientation.Horizontal;
         }
 
-        public void CalculateLayout()
+        public void CalculateLayout(E3Text text)
         {
             List<int> topGroupIds = new List<int>(optimalTopPositionById.Keys);
             topGroupIds.Sort((g1, g2) => optimalTopPositionById[g1].CompareTo(optimalTopPositionById[g2]));
@@ -273,7 +273,7 @@ namespace OutsideConnectionsSchema
             List<SymbolGroup> bottomGroups = new List<SymbolGroup>(bottomGroupIds.Count);
             bottomGroupIds.ForEach(id=>bottomGroups.Add(groupById[id]));
             double maxBottomGroupHeight = bottomGroups.Max(g => g.DeviceSymbols.Max(ds=>ds.Size.Height));
-            bottomGroups.ForEach(g=>g.CalculateGroupLayout(this, maxBottomGroupHeight, cableSymbolById, cableInfoById));
+            bottomGroups.ForEach(g=>g.CalculateGroupLayout(this, maxBottomGroupHeight, cableSymbolById, cableInfoById, text));
             List<CableSymbol> bottomHorizontalCableSymbols = GetGroupCableSymbols(bottomGroups).FindAll(cs => cs.Orientation == Orientation.Horizontal);
             double maxBottomCableHeight = (bottomHorizontalCableSymbols.Count > 0) ? (bottomHorizontalCableSymbols.Max(cs => cs.Size.Height) + gridStep) : 0;
             bottomGroupBottomMargin = bottomGroups.Max(g => g.BottomMargin);
@@ -282,7 +282,7 @@ namespace OutsideConnectionsSchema
             if (topGroupIds.Count > 0)
             {
                 double maxTopGroupHeight = topGroups.Max(g => g.DeviceSymbols.Max(ds => ds.Size.Height));
-                topGroups.ForEach(g=>g.CalculateGroupLayout(this, maxTopGroupHeight, cableSymbolById, cableInfoById));
+                topGroups.ForEach(g=>g.CalculateGroupLayout(this, maxTopGroupHeight, cableSymbolById, cableInfoById, text));
                 topGroupBottomMargin = topGroups.Max(g => g.BottomMargin);
                 topGroupsOffset = height - maxTopGroupHeight;
                 AdjustVerticalConnections(topGroups, bottomGroups);
@@ -839,16 +839,26 @@ namespace OutsideConnectionsSchema
             foreach (CableLayout cableLayout in symbolGroup.CableLayoutById.Values)
                 minMaxByCableId.Add(cableLayout.Id, new Tuple<double,double>(cableLayout.PlacedPoints.Min(p=>p.X), cableLayout.PlacedPoints.Max(p=>p.X)));
             int minFine = Int32.MaxValue;
-            do
+            int variantCount = 1;
+            foreach (int maxPosition in maxPositions)
             {
-                int fine = GetFine(positions, connectionAbscisses, symbols, layouts, symbolGroup, minMaxByCableId);
-                if (fine < minFine)
-                {
-                    minFine = fine;
-                    optimalPositions = new List<int>(positions);
-                }
+                variantCount *= maxPosition;
+                if (variantCount > 1000000)
+                    break;
             }
-            while (NextVariant(positions, maxPositions, lastIndex));
+            if (variantCount < 1000000)
+                do
+                {
+                    int fine = GetFine(positions, connectionAbscisses, symbols, layouts, symbolGroup, minMaxByCableId);
+                    if (fine < minFine)
+                    {
+                        minFine = fine;
+                        optimalPositions = new List<int>(positions);
+                    }
+                }
+                while (NextVariant(positions, maxPositions, lastIndex));
+            else
+                optimalPositions = positions;
             Dictionary<int, double> abscissesByCableId = new Dictionary<int, double>();
             for (int i = 0; i < optimalPositions.Count; i++)
             {
