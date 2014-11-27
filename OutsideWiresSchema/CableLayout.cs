@@ -6,7 +6,7 @@ using KSPE3Lib;
 
 namespace OutsideConnectionsSchema
 {
-    class CableLayout
+    public class CableLayout
     {
         private List<Point> startOffsets;
         private double skewOffset;

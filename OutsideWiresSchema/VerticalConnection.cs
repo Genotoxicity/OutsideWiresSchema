@@ -6,12 +6,12 @@ namespace OutsideConnectionsSchema
 {
     class VerticalConnection
     {
-        public List<int> TopGroupIds { get; private set; }
-        public List<int> BottomGroupIds { get; private set; }
+        public List<int> TopSymbolIds { get; private set; }
+        public List<int> BottomSymbolIds { get; private set; }
         private Dictionary<int, double> offsetByCableId;
         private List<CableSymbol> verticalCableSymbols;
-        private List<SymbolGroup> topGroups;
-        private List<SymbolGroup> bottomGroups;
+        private List<ISchemeSymbol> topSymbols;
+        private List<ISchemeSymbol> bottomSymbols;
         private double cablesWidthSum;
         private double minCablesWidth;
         private double gridStep;
@@ -24,19 +24,19 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public List<SymbolGroup> TopGroups
+        public List<ISchemeSymbol> TopSymbols
         {
             get
             {
-                return topGroups;
+                return topSymbols;
             }
         }
 
-        public List<SymbolGroup> BottomGroups
+        public List<ISchemeSymbol> BottomSymbols
         {
             get
             {
-                return bottomGroups;
+                return bottomSymbols;
             }
         }
 
@@ -58,31 +58,31 @@ namespace OutsideConnectionsSchema
 
         public VerticalConnection(List<int> topGroupIds, List<int> bottomGroupIds, double gridStep)
         {
-            TopGroupIds = topGroupIds;
-            BottomGroupIds = bottomGroupIds;
+            TopSymbolIds = topGroupIds;
+            BottomSymbolIds = bottomGroupIds;
             this.gridStep = gridStep;
         }
 
-        public void SetGroups(Dictionary<int, SymbolGroup> groupById)
+        public void SetSymbols(Dictionary<int, ISchemeSymbol> symbolById)
         {
-            topGroups = new List<SymbolGroup>(TopGroupIds.Count);
-            foreach (int topGroupId in TopGroupIds)
-                topGroups.Add(groupById[topGroupId]);
-            bottomGroups = new List<SymbolGroup>(BottomGroupIds.Count);
-            foreach (int bottomGroupId in BottomGroupIds)
-                bottomGroups.Add(groupById[bottomGroupId]);
+            topSymbols = new List<ISchemeSymbol>(TopSymbolIds.Count);
+            foreach (int topGroupId in TopSymbolIds)
+                topSymbols.Add(symbolById[topGroupId]);
+            bottomSymbols = new List<ISchemeSymbol>(BottomSymbolIds.Count);
+            foreach (int bottomGroupId in BottomSymbolIds)
+                bottomSymbols.Add(symbolById[bottomGroupId]);
         }
 
         public void SetVerticalCableSymbols(Dictionary<int, CableSymbol> cableSymbolById)
         {
-            verticalCableSymbols = BottomGroups.SelectMany(g => g.CableIds).Select(id => cableSymbolById[id]).Where(cableSymbol => cableSymbol.Orientation == Orientation.Vertical).ToList();
-            Dictionary<int, int> topPositionById = new Dictionary<int, int>(TopGroupIds.Count);
-            for (int i = 0; i < TopGroupIds.Count; i++)
-                topPositionById.Add(TopGroupIds[i], i);
-            Dictionary<int, int> bottomPositionById = new Dictionary<int, int>(BottomGroupIds.Count);
-            for (int i = 0; i < BottomGroupIds.Count; i++)
-                bottomPositionById.Add(BottomGroupIds[i], i);
-            VerticalCableSymbolsComparer comparer = new VerticalCableSymbolsComparer(topGroups, bottomGroups, bottomPositionById, topPositionById);
+            verticalCableSymbols = BottomSymbols.SelectMany(g => g.CableIds).Select(id => cableSymbolById[id]).Where(cableSymbol => cableSymbol.Orientation == Orientation.Vertical).ToList();
+            Dictionary<int, int> topPositionById = new Dictionary<int, int>(TopSymbolIds.Count);
+            for (int i = 0; i < TopSymbolIds.Count; i++)
+                topPositionById.Add(TopSymbolIds[i], i);
+            Dictionary<int, int> bottomPositionById = new Dictionary<int, int>(BottomSymbolIds.Count);
+            for (int i = 0; i < BottomSymbolIds.Count; i++)
+                bottomPositionById.Add(BottomSymbolIds[i], i);
+            VerticalCableSymbolsComparer comparer = new VerticalCableSymbolsComparer(topSymbols, bottomSymbols, bottomPositionById, topPositionById);
             verticalCableSymbols.Sort(comparer);
             cablesWidthSum = verticalCableSymbols.Sum(vc => vc.Size.Width);
             minCablesWidth = cablesWidthSum + (verticalCableSymbols.Count - 1) * gridStep;
@@ -115,17 +115,17 @@ namespace OutsideConnectionsSchema
         {
             private Dictionary<int, int> optimalBottomPositionById;
             private Dictionary<int, int> optimalTopPositionById;
-            private List<SymbolGroup> topGroups;
-            private List<SymbolGroup> bottomGroups;
+            private List<ISchemeSymbol> topGroups;
+            private List<ISchemeSymbol> bottomGroups;
 
             private NaturalSortingStringComparer stringComparer;
 
-            public VerticalCableSymbolsComparer(List<SymbolGroup> topGroups, List<SymbolGroup> bottomGroups, Dictionary<int, int> bottomPositionById, Dictionary<int, int> topPositionById)
+            public VerticalCableSymbolsComparer(List<ISchemeSymbol> topSymbols, List<ISchemeSymbol> bottomSymbols, Dictionary<int, int> bottomPositionById, Dictionary<int, int> topPositionById)
             {
                 this.optimalBottomPositionById = bottomPositionById;
                 this.optimalTopPositionById = topPositionById;
-                this.topGroups = topGroups;
-                this.bottomGroups = bottomGroups;
+                this.topGroups = topSymbols;
+                this.bottomGroups = bottomSymbols;
                 stringComparer = new NaturalSortingStringComparer();
             }
 

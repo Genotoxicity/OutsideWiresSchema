@@ -17,7 +17,7 @@ namespace OutsideConnectionsSchema
             sheetMarkAttribute = "marka2";
         }
         
-        public void Main(int processId)
+        public void Main(int processId, ScriptType scriptType)
         {
             int electricSchemeTypeCode = 0;
             E3Project project = new E3Project(processId);
@@ -28,14 +28,44 @@ namespace OutsideConnectionsSchema
             Dictionary<int, CableInfo> cableInfoById;
             GetDeviceConnectionByIdAndCableInfoById(project, electricSchemeSheetIds, out deviceConnectionById, out cableInfoById);
             Dictionary<int, DeviceSymbol> deviceSymbolById = GetDeviceSymbolById(project, text, deviceConnectionById);
-            List<Scheme> schemes = GetSchemes(deviceConnectionById, deviceSymbolById, cableInfoById, sheet, text);
-            PlaceSchemes(schemes, project, sheet, text, String.Empty);
-            //List<int> pipeIds = GetPipeIds(project);
-            //new SpecificationScript(deviceConnectionById.Values, pipeIds);
+            Dictionary<string, List<SymbolScheme>> schemesByAssignment = GetSchemesByAssignment(deviceConnectionById, deviceSymbolById, cableInfoById, sheet, text);
+            if (scriptType == ScriptType.Scheme)
+            {
+                foreach (string assignment in schemesByAssignment.Keys)
+                    PlaceSchemes(schemesByAssignment[assignment], project, sheet, text, assignment);
+            }
+            else
+            {
+                Dictionary<string, List<int>> OWSSheetIdsByAssignment = GetOWSSheetIdsByAssignment(project, sheet, schemesByAssignment.Keys);
+                foreach (string assignment in schemesByAssignment.Keys)
+                {
+                    IEnumerable<int> allDeviceIds = schemesByAssignment[assignment].SelectMany(s => s.AllDeviceIds).Distinct();
+                    int schemeSheetCount = OWSSheetIdsByAssignment[assignment].Count;
+                    new SpecificationScript(allDeviceIds, ++schemeSheetCount, subProjectAttribute, "СВП", sheetMarkAttribute, assignment);
+                }
+            }
             project.Release();
         }
 
-        private List<int> GetPipeIds(E3Project project)
+        private Dictionary<string, List<int>> GetOWSSheetIdsByAssignment(E3Project project, Sheet sheet, IEnumerable<string> assignments)
+        {
+            Dictionary<string, List<int>> sheetIdsByAssignment = new Dictionary<string, List<int>>(assignments.Count());
+            foreach (string assignment in assignments)
+                sheetIdsByAssignment.Add(assignment, new List<int>());
+            foreach(int sheetId in project.SheetIds)
+            {
+                sheet.Id = sheetId;
+                if (sheet.GetAttributeValue(subProjectAttribute).Equals("СВП"))
+                {
+                    string assignment = sheet.GetAttributeValue(sheetMarkAttribute);
+                    if (sheetIdsByAssignment.ContainsKey(assignment))
+                        sheetIdsByAssignment[assignment].Add(sheetId);
+                }
+            }
+            return sheetIdsByAssignment;
+        }
+
+        /*private List<int> GetPipeIds(E3Project project)
         {
             NormalDevice device = project.GetNormalDeviceById(0);
             List<int> pipeIds = new List<int>();
@@ -47,7 +77,7 @@ namespace OutsideConnectionsSchema
                     pipeIds.Add(id);
             }
             return pipeIds;
-        }
+        }*/
 
         private static HashSet<int> GetElectricSchemeSheetIds(E3Project project ,Sheet sheet, int electricShemeTypeCode)
         {
@@ -158,16 +188,23 @@ namespace OutsideConnectionsSchema
             return deviceSymbolById;
         }
 
-        private List<Scheme> GetSchemes(Dictionary<int, DeviceConnection> deviceConnectionById, Dictionary<int, DeviceSymbol> deviceSymbolById, Dictionary<int, CableInfo> cableInfoById, Sheet sheet, E3Text text)
+        private Dictionary<string, List<SymbolScheme>> GetSchemesByAssignment(Dictionary<int, DeviceConnection> deviceConnectionById, Dictionary<int, DeviceSymbol> deviceSymbolById, Dictionary<int, CableInfo> cableInfoById, Sheet sheet, E3Text text)
         {
-            List<HashSet<int>> schemeSymbolIds = GetSchemeSymbolIds(deviceConnectionById.Values);
-            List<Scheme> schemes = new List<Scheme>(schemeSymbolIds.Count);
-            foreach (HashSet<int> deviceIds in schemeSymbolIds)
-                schemes.Add(new Scheme(deviceIds, deviceSymbolById, cableInfoById, text));
-            return schemes;
+            List<HashSet<int>> groupedSymbolIds = GetGroupedSymbolIds(deviceConnectionById.Values);
+            Dictionary<string, List<SymbolScheme>> schemesByAssignment = new Dictionary<string, List<SymbolScheme>>();
+            foreach (HashSet<int> deviceIds in groupedSymbolIds)
+            {
+                List<SymbolScheme> schemes = SchemeCreator.GetSchemesForConnection(deviceIds, deviceSymbolById, cableInfoById, text);
+                foreach (SymbolScheme scheme in schemes)
+                    if (schemesByAssignment.ContainsKey(scheme.Assignment))
+                        schemesByAssignment[scheme.Assignment].Add(scheme);
+                    else
+                        schemesByAssignment.Add(scheme.Assignment, new List<SymbolScheme>() { scheme });
+            }
+            return schemesByAssignment;
         }
 
-        private static List<HashSet<int>> GetSchemeSymbolIds(IEnumerable<DeviceConnection> deviceConnections)
+        private static List<HashSet<int>> GetGroupedSymbolIds(IEnumerable<DeviceConnection> deviceConnections)
         {
             IEnumerable<HashSet<int>> deviceIdsGroupedByCable = GetDeviceIdsGroupedByCable(deviceConnections);
             Dictionary<int, HashSet<int>> deviceIdsByGroupId = new Dictionary<int, HashSet<int>>();
@@ -239,7 +276,7 @@ namespace OutsideConnectionsSchema
                 to.Add(id);
         }
 
-        private void PlaceSchemes(List<Scheme> schemes, E3Project project, Sheet sheet, E3Text text, string sheetMark)
+        private void PlaceSchemes(List<SymbolScheme> schemes, E3Project project, Sheet sheet, E3Text text, string sheetMark)
         {
             double gridStep = 4;
             Group group = project.GetGroupById(0);
@@ -251,8 +288,8 @@ namespace OutsideConnectionsSchema
             double startX = sheet.MoveRight(sheet.DrawingArea.Left, sheet.DrawingArea.Width * 0.05);
             Point sheetCenter = new Point(sheet.MoveRight(sheet.DrawingArea.Left, sheet.DrawingArea.Width / 2), sheet.MoveDown(sheet.DrawingArea.Top, sheet.DrawingArea.Height / 2));
             double totalSchemeWidth = gridStep;
-            List<Scheme> notPlacedSchemes = new List<Scheme>();
-            foreach (Scheme scheme in schemes)
+            List<SymbolScheme> notPlacedSchemes = new List<SymbolScheme>();
+            foreach (SymbolScheme scheme in schemes)
             {
                 if (scheme.Size.Width > availableWith)
                 {
@@ -276,7 +313,7 @@ namespace OutsideConnectionsSchema
                     double totalGap = availableWith - width;
                     double gap = totalGap / (notPlacedSchemes.Count + 1);
                     double x = startX;
-                    foreach (Scheme notPlacedScheme in notPlacedSchemes)
+                    foreach (SymbolScheme notPlacedScheme in notPlacedSchemes)
                     {
                         x = sheet.MoveRight(x, gap + notPlacedScheme.Size.Width / 2 );
                         notPlacedScheme.Place(sheet, graphic, group, text, new Point(x, sheetCenter.Y));
@@ -295,7 +332,7 @@ namespace OutsideConnectionsSchema
                 double totalGap = availableWith - width;
                 double gap = totalGap / (notPlacedSchemes.Count + 1);
                 double x = startX;
-                foreach (Scheme notPlacedScheme in notPlacedSchemes)
+                foreach (SymbolScheme notPlacedScheme in notPlacedSchemes)
                 {
                     x = sheet.MoveRight(x, gap + notPlacedScheme.Size.Width / 2);
                     notPlacedScheme.Place(sheet, graphic, group, text, new Point(x, sheetCenter.Y));

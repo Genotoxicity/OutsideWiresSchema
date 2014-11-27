@@ -6,7 +6,7 @@ using KSPE3Lib;
 
 namespace OutsideConnectionsSchema
 {
-    class SchemeLayout
+    class SymbolScheme
     {
         private int connectionColorIndex = 16;
         private double radius = 1;
@@ -19,42 +19,60 @@ namespace OutsideConnectionsSchema
         private List<VerticalConnection> verticalConnections;
         private Dictionary<int, double> topGroupHorizontalOffsetById;
         private Dictionary<int, double> bottomGroupHorizontalOffsetById;
-        private Dictionary<int, SymbolGroup> groupById;
-        private Dictionary<int, List<int>> groupIdsByCableId;
+        private Dictionary<int, ISchemeSymbol> symbolById;
+        private Dictionary<int, List<int>> symbolIdsByCableId;
         private Dictionary<int, int> optimalBottomPositionById;
         private Dictionary<int, int> optimalTopPositionById;
         private Dictionary<int, CableInfo> cableInfoById;
         private Dictionary<int, CableSymbol> cableSymbolById;
 
+        public string Assignment { get; private set; }
+
         public Size Size { get; private set; }
 
-        public SchemeLayout(Dictionary<int, SymbolGroup> groupById, Dictionary<int, List<int>> groupIdsByCableId, Dictionary<int, CableInfo> cableInfoById, double gridStep, E3Text text, double height)
+        public List<int> AllDeviceIds
         {
-            this.groupById = groupById;
-            this.groupIdsByCableId = groupIdsByCableId;
-            this.gridStep = gridStep;
-            this.height = height;
+            get
+            {
+                List<int> ids = new List<int>();
+                foreach (ISchemeSymbol symbol in symbolById.Values)
+                {
+                    DeviceGroup deviceGroup = symbol as DeviceGroup;
+                    if (deviceGroup != null)
+                        ids.AddRange(deviceGroup.DeviceSymbols.Select(ds => ds.Id));
+                }
+                ids.AddRange(symbolIdsByCableId.Keys);
+                return ids;
+            }
+        }
+
+        public SymbolScheme(Dictionary<int, ISchemeSymbol> symbolById, Dictionary<int, List<int>> symbolIdsByCableId, Dictionary<int, CableInfo> cableInfoById, E3Text text, string assignment)
+        {
+            Assignment = assignment;
+            this.symbolById = symbolById;
+            this.symbolIdsByCableId = symbolIdsByCableId;
+            gridStep = 4;
+            height = 272 * 0.618;
             this.cableInfoById = cableInfoById;
             double minIntersectionCount = Int32.MaxValue;
-            List<int> bottomGroupIds = new List<int>();
-            List<int> topGroupIds = new List<int>();
-            foreach (SymbolGroup group in groupById.Values)
-                if (group.Level == Level.Top)
-                    topGroupIds.Add(group.Id);
+            List<int> bottomSymbolIds = new List<int>();
+            List<int> topSymbolIds = new List<int>();
+            foreach (ISchemeSymbol symbol in symbolById.Values)
+                if (symbol.Level == Level.Top)
+                    topSymbolIds.Add(symbol.Id);
                 else
-                    bottomGroupIds.Add(group.Id);
+                    bottomSymbolIds.Add(symbol.Id);
             List<Tuple<int, int>> topToTopConnections, bottomToBottomConnections, topToBottomConnections;   // список соединений между групами, если группы на разных уровнях - первый член верхняя группа, второй - нижняя
-            GetConnections(groupById, groupIdsByCableId, out topToTopConnections, out bottomToBottomConnections, out topToBottomConnections);
+            GetConnections(symbolById, symbolIdsByCableId, out topToTopConnections, out bottomToBottomConnections, out topToBottomConnections);
             Dictionary<int, Dictionary<int, int>> connectedBottomPositionByIdByTopId = GetConnectedPositionByIdByCenterId(Level.Top, topToBottomConnections);
             Dictionary<int, Dictionary<int, int>> connectedTopPositionByIdByBottomId = GetConnectedPositionByIdByCenterId(Level.Bottom, topToBottomConnections);
-
-            foreach (List<int> bottomPermutation in Permutate(bottomGroupIds, bottomGroupIds.Count))
+            foreach (List<int> bottomPermutation in Permutate(bottomSymbolIds, bottomSymbolIds.Count))
             {
                 Dictionary<int, int> bottomPositionById = new Dictionary<int, int>(bottomPermutation.Count);
                 for (int i = 0; i < bottomPermutation.Count; i++)
                     bottomPositionById.Add(bottomPermutation[i], i);
                 int bottomIntersectionCount = GetLevelIntersectionCount(bottomPositionById, bottomToBottomConnections);
-                foreach (List<int> topPermutation in Permutate(topGroupIds, topGroupIds.Count))
+                foreach (List<int> topPermutation in Permutate(topSymbolIds, topSymbolIds.Count))
                 {
                     Dictionary<int, int> topPositionById = new Dictionary<int, int>(topPermutation.Count);
                     for (int i = 0; i < topPermutation.Count; i++)
@@ -81,7 +99,9 @@ namespace OutsideConnectionsSchema
             Dictionary<int, Dictionary<int, int>> connectedPositionByIdByCenterId = new Dictionary<int, Dictionary<int, int>>();
             foreach (int centerId in centerIds)
             {
-                SymbolGroup centerGroup = groupById[centerId];
+                DeviceGroup centerGroup = symbolById[centerId] as DeviceGroup;
+                if (centerGroup == null)
+                    continue;
                 List<int> connectedIds = topToBottomConnections.Where(c => ((centerGroupLevel == Level.Top) ? c.Item1 : c.Item2) == centerId).Select(c => (centerGroupLevel == Level.Top) ? c.Item2 : c.Item1).ToList();
                 int connectedCount = connectedIds.Count();
                 if (connectedCount > 1)
@@ -89,7 +109,7 @@ namespace OutsideConnectionsSchema
                     Dictionary<string, List<int>> groupIdsByPinName = new Dictionary<string, List<int>>(connectedCount);
                     foreach (int connectedId in connectedIds)
                     {
-                        IEnumerable<int> commonCableIds = groupById[connectedId].CableIds.Intersect(centerGroup.CableIds);
+                        IEnumerable<int> commonCableIds = symbolById[connectedId].CableIds.Intersect(centerGroup.CableIds);
                         IEnumerable<SymbolPin> bottomPins = centerGroup.DeviceSymbols.SelectMany(ds => ds.BottomPins);
                         IEnumerable<SymbolPin> topPins = centerGroup.DeviceSymbols.SelectMany(ds => ds.TopPins);
                         List<SymbolPin> pins = new List<SymbolPin>(bottomPins.Count() + topPins.Count());
@@ -120,17 +140,17 @@ namespace OutsideConnectionsSchema
             return connectedPositionByIdByCenterId;
         }
 
-        private static void GetConnections(Dictionary<int, SymbolGroup> groupById, Dictionary<int, List<int>> groupIdsByCableId, out List<Tuple<int, int>> topToTopConnections, out List<Tuple<int, int>> bottomToBottomConnections, out List<Tuple<int, int>> topToBottomConnections)
+        private static void GetConnections(Dictionary<int, ISchemeSymbol> symbolById, Dictionary<int, List<int>> symbolIdsByCableId, out List<Tuple<int, int>> topToTopConnections, out List<Tuple<int, int>> bottomToBottomConnections, out List<Tuple<int, int>> topToBottomConnections)
         {
             topToTopConnections = new List<Tuple<int, int>>();
             bottomToBottomConnections = new List<Tuple<int, int>>();
             topToBottomConnections = new List<Tuple<int, int>>();
-            foreach (List<int> groupIds in groupIdsByCableId.Values)
+            foreach (List<int> symbolIds in symbolIdsByCableId.Values)
             {
-                int firstId = groupIds[0];
-                int secondId = groupIds[1];
-                Level firstLevel = groupById[firstId].Level;
-                Level secondLevel = groupById[secondId].Level;
+                int firstId = symbolIds[0];
+                int secondId = symbolIds[1];
+                Level firstLevel = symbolById[firstId].Level;
+                Level secondLevel = symbolById[secondId].Level;
                 if (firstLevel == secondLevel)
                 {
                     if (firstLevel == Level.Top)
@@ -230,10 +250,10 @@ namespace OutsideConnectionsSchema
 
         public Dictionary<int, int> GetMatePositionByCableId(int groupId)
         {
-            Dictionary<int, int> matePositionByCableId = new Dictionary<int, int>(groupIdsByCableId.Count);
-            foreach (int cableId in groupIdsByCableId.Keys)
+            Dictionary<int, int> matePositionByCableId = new Dictionary<int, int>(symbolIdsByCableId.Count);
+            foreach (int cableId in symbolIdsByCableId.Keys)
             {
-                List<int> groups = groupIdsByCableId[cableId];
+                List<int> groups = symbolIdsByCableId[cableId];
                 int mateId = (groups[0] == groupId) ? groups[1] : groups[0];
                 if (optimalBottomPositionById.ContainsKey(mateId))
                     matePositionByCableId.Add(cableId, optimalBottomPositionById[mateId]);
@@ -245,19 +265,19 @@ namespace OutsideConnectionsSchema
 
         private Dictionary<int, CableSymbol> GetCableSymbolById(List<Tuple<int, int>> topToBottomConnections, E3Text text)
         {
-            Dictionary<int, CableSymbol> cableSymbolById = new Dictionary<int, CableSymbol>(groupIdsByCableId.Count);
-            foreach (int cableId in groupIdsByCableId.Keys)
+            Dictionary<int, CableSymbol> cableSymbolById = new Dictionary<int, CableSymbol>(symbolIdsByCableId.Count);
+            foreach (int cableId in symbolIdsByCableId.Keys)
             {
-                Orientation orientation = GetCableOrientation(groupIdsByCableId[cableId], topToBottomConnections);
+                Orientation orientation = GetCableOrientation(symbolIdsByCableId[cableId], topToBottomConnections);
                 cableSymbolById.Add(cableId,new CableSymbol(cableInfoById[cableId], text, orientation));
             }
             return cableSymbolById;
         }
 
-        private static Orientation GetCableOrientation(List<int> groupIds, List<Tuple<int, int>> topToBottomConnections)
+        private static Orientation GetCableOrientation(List<int> symbolIds, List<Tuple<int, int>> topToBottomConnections)
         {
             foreach (Tuple<int, int> connection in topToBottomConnections)
-                if ((connection.Item1 == groupIds[0] && connection.Item2 == groupIds[1]) || (connection.Item1 == groupIds[1] && connection.Item2 == groupIds[0]))
+                if ((connection.Item1 == symbolIds[0] && connection.Item2 == symbolIds[1]) || (connection.Item1 == symbolIds[1] && connection.Item2 == symbolIds[0]))
                     return Orientation.Vertical;
             return Orientation.Horizontal;
         }
@@ -268,26 +288,26 @@ namespace OutsideConnectionsSchema
             topGroupIds.Sort((g1, g2) => optimalTopPositionById[g1].CompareTo(optimalTopPositionById[g2]));
             List<int> bottomGroupIds = new List<int>(optimalBottomPositionById.Keys);
             bottomGroupIds.Sort((g1, g2) => optimalBottomPositionById[g1].CompareTo(optimalBottomPositionById[g2]));
-            List<SymbolGroup> topGroups = new List<SymbolGroup>(topGroupIds.Count);
-            topGroupIds.ForEach(id=>topGroups.Add(groupById[id]));
-            List<SymbolGroup> bottomGroups = new List<SymbolGroup>(bottomGroupIds.Count);
-            bottomGroupIds.ForEach(id=>bottomGroups.Add(groupById[id]));
-            double maxBottomGroupHeight = bottomGroups.Max(g => g.DeviceSymbols.Max(ds=>ds.Size.Height));
-            bottomGroups.ForEach(g=>g.CalculateGroupLayout(this, maxBottomGroupHeight, cableSymbolById, cableInfoById, text));
-            List<CableSymbol> bottomHorizontalCableSymbols = GetGroupCableSymbols(bottomGroups).FindAll(cs => cs.Orientation == Orientation.Horizontal);
+            List<ISchemeSymbol> topSymbols = new List<ISchemeSymbol>(topGroupIds.Count);
+            topGroupIds.ForEach(id=>topSymbols.Add(symbolById[id]));
+            List<ISchemeSymbol> bottomSymbols = new List<ISchemeSymbol>(bottomGroupIds.Count);
+            bottomGroupIds.ForEach(id=>bottomSymbols.Add(symbolById[id]));
+            double maxBottomGroupHeight = bottomSymbols.Max(g => g.OutlineHeight);
+            bottomSymbols.ForEach(g => { if (g is DeviceGroup) { DeviceGroup dg = g as DeviceGroup; dg.CalculateLayout(this, maxBottomGroupHeight, cableSymbolById, cableInfoById, text); } });
+            List<CableSymbol> bottomHorizontalCableSymbols = GetGroupCableSymbols(bottomSymbols).FindAll(cs => cs.Orientation == Orientation.Horizontal);
             double maxBottomCableHeight = (bottomHorizontalCableSymbols.Count > 0) ? (bottomHorizontalCableSymbols.Max(cs => cs.Size.Height) + gridStep) : 0;
-            bottomGroupBottomMargin = bottomGroups.Max(g => g.BottomMargin);
+            bottomGroupBottomMargin = bottomSymbols.Max(g => g.BottomMargin);
             bottomGroupsOffset = maxBottomCableHeight + bottomGroupBottomMargin;
-            double bottomHeight = bottomGroups.Max(g => g.Height) + maxBottomCableHeight;
+            double bottomHeight = bottomSymbols.Max(g => g.Height) + maxBottomCableHeight;
             if (topGroupIds.Count > 0)
             {
-                double maxTopGroupHeight = topGroups.Max(g => g.DeviceSymbols.Max(ds => ds.Size.Height));
-                topGroups.ForEach(g=>g.CalculateGroupLayout(this, maxTopGroupHeight, cableSymbolById, cableInfoById, text));
-                topGroupBottomMargin = topGroups.Max(g => g.BottomMargin);
+                double maxTopGroupHeight = topSymbols.Max(g => g.OutlineHeight);
+                topSymbols.ForEach(g=>{ if (g is DeviceGroup) { DeviceGroup dg = g as DeviceGroup; dg.CalculateLayout(this, maxTopGroupHeight, cableSymbolById, cableInfoById, text);}});
+                topGroupBottomMargin = topSymbols.Max(g => g.BottomMargin);
                 topGroupsOffset = height - maxTopGroupHeight;
-                AdjustVerticalConnections(topGroups, bottomGroups);
-                double topWidth = topGroupHorizontalOffsetById.Values.Sum() + topGroups.Last().RightMargin;
-                double bottomWidth = bottomGroupHorizontalOffsetById.Values.Sum() + bottomGroups.Last().RightMargin;
+                AdjustVerticalConnections(topSymbols, bottomSymbols);
+                double topWidth = topGroupHorizontalOffsetById.Values.Sum() + topSymbols.Last().RightMargin;
+                double bottomWidth = bottomGroupHorizontalOffsetById.Values.Sum() + bottomSymbols.Last().RightMargin;
                 double totalWidth = Math.Max(topWidth, bottomWidth);
                 double totalHeight = height;
                 Size = new Size(totalWidth, totalHeight);
@@ -295,31 +315,31 @@ namespace OutsideConnectionsSchema
             else
             {
                 topGroupHorizontalOffsetById = new Dictionary<int, double>(0);
-                bottomGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(bottomGroups);
-                double bottomWidth = bottomGroupHorizontalOffsetById.Values.Sum() + bottomGroups.Last().RightMargin;
+                bottomGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(bottomSymbols);
+                double bottomWidth = bottomGroupHorizontalOffsetById.Values.Sum() + bottomSymbols.Last().RightMargin;
                 Size = new Size(bottomWidth, bottomHeight);
             }
         }
 
-        private void AdjustVerticalConnections(List<SymbolGroup> topGroups, List<SymbolGroup> bottomGroups)
+        private void AdjustVerticalConnections(List<ISchemeSymbol> topSymbols, List<ISchemeSymbol> bottomSymbols)
         {
-            Dictionary<int, double> minTopGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(topGroups);
-            Dictionary<int, double> minBottomGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(bottomGroups);
+            Dictionary<int, double> minTopGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(topSymbols);
+            Dictionary<int, double> minBottomGroupHorizontalOffsetById = GetMinHorizontalOffsetsBetweenGroups(bottomSymbols);
             topGroupHorizontalOffsetById = new Dictionary<int, double>(minTopGroupHorizontalOffsetById);
             bottomGroupHorizontalOffsetById = new Dictionary<int, double>(minBottomGroupHorizontalOffsetById);
-            verticalConnections = GetVerticalConnections(topGroups, bottomGroups);
+            verticalConnections = GetVerticalConnections(topSymbols, bottomSymbols);
             if (verticalConnections.Count > 0)
             {
                 MoveTopGroupCentersToBottomGroupCenters();
-                IEnumerable<int> topGroupIds = topGroups.Select(g => g.Id);
-                IEnumerable<int> bottomGroupIds = bottomGroups.Select(g => g.Id);
+                IEnumerable<int> topGroupIds = topSymbols.Select(g => g.Id);
+                IEnumerable<int> bottomGroupIds = bottomSymbols.Select(g => g.Id);
                 MoveStartNotConnectedTopGroupsToConnectedTopGroups(topGroupIds, minTopGroupHorizontalOffsetById);
                 if (verticalConnections.Count > 1)
                 {
                     for (int i = 1; i < verticalConnections.Count; i++)
                     {
-                        int firstConnectionLastTopGroupId = verticalConnections[i - 1].TopGroupIds.Last();
-                        int secondConnectionFirstTopGroupId = verticalConnections[i].TopGroupIds.First();
+                        int firstConnectionLastTopGroupId = verticalConnections[i - 1].TopSymbolIds.Last();
+                        int secondConnectionFirstTopGroupId = verticalConnections[i].TopSymbolIds.First();
                         double firstConnectionLastTopGroupMinOffset = GetOffsetBeforeGroup(firstConnectionLastTopGroupId, minTopGroupHorizontalOffsetById);
                         double secondConnectionFirstTopGroupMinOffset = GetOffsetBeforeGroup(secondConnectionFirstTopGroupId, minTopGroupHorizontalOffsetById);
                         double firstConnectionLastTopGroupOffset = GetOffsetBeforeGroup(firstConnectionLastTopGroupId, topGroupHorizontalOffsetById);
@@ -330,8 +350,8 @@ namespace OutsideConnectionsSchema
                         if (distanceDifference > 0)
                         {
                             topGroupHorizontalOffsetById[secondConnectionFirstTopGroupId] += distanceDifference;
-                            int firstConnectionLastBottomGroupId = verticalConnections[i - 1].BottomGroupIds.Last();
-                            int secondConnectionFirstBottomGroupId = verticalConnections[i].BottomGroupIds.First();
+                            int firstConnectionLastBottomGroupId = verticalConnections[i - 1].BottomSymbolIds.Last();
+                            int secondConnectionFirstBottomGroupId = verticalConnections[i].BottomSymbolIds.First();
                             MoveGroupsOffsets(bottomGroupIds, bottomGroupHorizontalOffsetById, firstConnectionLastBottomGroupId, secondConnectionFirstBottomGroupId,distanceDifference);
                         }
                         if (distanceDifference < 0)
@@ -366,8 +386,8 @@ namespace OutsideConnectionsSchema
                     {
                         double distanceDifference = gridStep - difference;
                         rightOffset += distanceDifference;
-                        MoveGroupsOffsets(topGroupIds, topGroupHorizontalOffsetById, leftConnection.TopGroupIds.Last(), rightConnection.TopGroupIds.First(), distanceDifference);
-                        MoveGroupsOffsets(bottomGroupIds, bottomGroupHorizontalOffsetById, leftConnection.BottomGroupIds.Last(), rightConnection.BottomGroupIds.First(), distanceDifference);
+                        MoveGroupsOffsets(topGroupIds, topGroupHorizontalOffsetById, leftConnection.TopSymbolIds.Last(), rightConnection.TopSymbolIds.First(), distanceDifference);
+                        MoveGroupsOffsets(bottomGroupIds, bottomGroupHorizontalOffsetById, leftConnection.BottomSymbolIds.Last(), rightConnection.BottomSymbolIds.First(), distanceDifference);
                     }
                     if (lastCalculatedIndex != i - 1)
                     {
@@ -411,22 +431,22 @@ namespace OutsideConnectionsSchema
         private void GetVerticalConnectionGroupsWidthAndOffset(VerticalConnection connection, out double width, out double offset)
         {
             double topWidth, bottomWidth;
-            double firstTopGroupOffset = GetOffsetBeforeGroup(connection.TopGroupIds.First(), topGroupHorizontalOffsetById);
-            if (connection.TopGroupIds.First() != connection.TopGroupIds.Last())
+            double firstTopGroupOffset = GetOffsetBeforeGroup(connection.TopSymbolIds.First(), topGroupHorizontalOffsetById);
+            if (connection.TopSymbolIds.First() != connection.TopSymbolIds.Last())
             {
-                double lastTopGroupOffset = GetOffsetBeforeGroup(connection.TopGroupIds.Last(), topGroupHorizontalOffsetById);
-                topWidth = lastTopGroupOffset - firstTopGroupOffset + connection.TopGroups.First().LeftMargin + connection.TopGroups.Last().RightMargin;
+                double lastTopGroupOffset = GetOffsetBeforeGroup(connection.TopSymbolIds.Last(), topGroupHorizontalOffsetById);
+                topWidth = lastTopGroupOffset - firstTopGroupOffset + connection.TopSymbols.First().LeftMargin + connection.TopSymbols.Last().RightMargin;
             }
             else
-                topWidth = connection.TopGroups.First().LeftMargin + connection.TopGroups.Last().RightMargin;
-            double firstBottomGroupOffset = GetOffsetBeforeGroup(connection.BottomGroupIds.First(), bottomGroupHorizontalOffsetById);
-            if (connection.BottomGroupIds.First() != connection.BottomGroupIds.Last())
+                topWidth = connection.TopSymbols.First().LeftMargin + connection.TopSymbols.Last().RightMargin;
+            double firstBottomGroupOffset = GetOffsetBeforeGroup(connection.BottomSymbolIds.First(), bottomGroupHorizontalOffsetById);
+            if (connection.BottomSymbolIds.First() != connection.BottomSymbolIds.Last())
             {
-                double lastBottomGroupOffset = GetOffsetBeforeGroup(connection.BottomGroupIds.Last(), bottomGroupHorizontalOffsetById);
-                bottomWidth = lastBottomGroupOffset - firstBottomGroupOffset + connection.BottomGroups.First().LeftMargin + connection.BottomGroups.Last().RightMargin;
+                double lastBottomGroupOffset = GetOffsetBeforeGroup(connection.BottomSymbolIds.Last(), bottomGroupHorizontalOffsetById);
+                bottomWidth = lastBottomGroupOffset - firstBottomGroupOffset + connection.BottomSymbols.First().LeftMargin + connection.BottomSymbols.Last().RightMargin;
             }
             else
-                bottomWidth = connection.BottomGroups.First().LeftMargin + connection.BottomGroups.Last().RightMargin;
+                bottomWidth = connection.BottomSymbols.First().LeftMargin + connection.BottomSymbols.Last().RightMargin;
             width = Math.Max(topWidth, bottomWidth);
             offset = Math.Min(firstTopGroupOffset, firstBottomGroupOffset);
         }
@@ -434,7 +454,7 @@ namespace OutsideConnectionsSchema
         private void MoveStartNotConnectedTopGroupsToConnectedTopGroups(IEnumerable<int> topGroupIds, Dictionary<int, double> minTopGroupHorizontalOffsetById)
         {
             VerticalConnection firstVerticalConnection = verticalConnections.First();
-            int firstMovedTopGroupId = firstVerticalConnection.TopGroupIds.First();
+            int firstMovedTopGroupId = firstVerticalConnection.TopSymbolIds.First();
             if (firstMovedTopGroupId != topGroupIds.First())
             {
                 double minOffset = minTopGroupHorizontalOffsetById[firstMovedTopGroupId];
@@ -449,25 +469,25 @@ namespace OutsideConnectionsSchema
         {
             foreach (VerticalConnection verticalConnection in verticalConnections)
             {
-                List<int> connectionBottomGroupIds = verticalConnection.BottomGroupIds;
+                List<int> connectionBottomGroupIds = verticalConnection.BottomSymbolIds;
                 int firstConnectionBottomGroupId = connectionBottomGroupIds.First();
                 int lastConnectionBottomGroupId = connectionBottomGroupIds.Last();
                 double offsetBeforeFirstConnectionBottomGroup = GetOffsetBeforeGroup(firstConnectionBottomGroupId, bottomGroupHorizontalOffsetById);
                 double connectionBottomGroupWidth;
                 if (firstConnectionBottomGroupId == lastConnectionBottomGroupId)
-                    connectionBottomGroupWidth = groupById[firstConnectionBottomGroupId].SymbolsWidth;
+                    connectionBottomGroupWidth = symbolById[firstConnectionBottomGroupId].OutlineWidth;
                 else
-                    connectionBottomGroupWidth = GetOffsetBeforeGroup(lastConnectionBottomGroupId, bottomGroupHorizontalOffsetById) + groupById[lastConnectionBottomGroupId].SymbolsWidth - offsetBeforeFirstConnectionBottomGroup;
+                    connectionBottomGroupWidth = GetOffsetBeforeGroup(lastConnectionBottomGroupId, bottomGroupHorizontalOffsetById) + symbolById[lastConnectionBottomGroupId].OutlineWidth - offsetBeforeFirstConnectionBottomGroup;
                 double connectionBottomGroupCenteroffset = offsetBeforeFirstConnectionBottomGroup + connectionBottomGroupWidth / 2;
-                List<int> connectionTopGroupIds = verticalConnection.TopGroupIds;
+                List<int> connectionTopGroupIds = verticalConnection.TopSymbolIds;
                 int firstConnectionTopGroupId = connectionTopGroupIds.First();
                 int lastConnectionTopGroupId = connectionTopGroupIds.Last();
                 double offsetBeforeFirstConnectionTopGroup = GetOffsetBeforeGroup(firstConnectionTopGroupId, topGroupHorizontalOffsetById);
                 double connectionTopGroupWidth;
                 if (firstConnectionTopGroupId == lastConnectionTopGroupId)
-                    connectionTopGroupWidth = groupById[firstConnectionTopGroupId].SymbolsWidth;
+                    connectionTopGroupWidth = symbolById[firstConnectionTopGroupId].OutlineWidth;
                 else
-                    connectionTopGroupWidth = GetOffsetBeforeGroup(lastConnectionTopGroupId, topGroupHorizontalOffsetById) + groupById[lastConnectionTopGroupId].SymbolsWidth - offsetBeforeFirstConnectionTopGroup;
+                    connectionTopGroupWidth = GetOffsetBeforeGroup(lastConnectionTopGroupId, topGroupHorizontalOffsetById) + symbolById[lastConnectionTopGroupId].OutlineWidth - offsetBeforeFirstConnectionTopGroup;
                 double connectionTopGroupCenteroffset = offsetBeforeFirstConnectionTopGroup + connectionTopGroupWidth / 2;
                 topGroupHorizontalOffsetById[firstConnectionTopGroupId] += (connectionBottomGroupCenteroffset - connectionTopGroupCenteroffset);
             }
@@ -491,13 +511,13 @@ namespace OutsideConnectionsSchema
             return betweenGroupIds;
         }
 
-        private List<CableSymbol> GetGroupCableSymbols(List<SymbolGroup> groups)
+        private List<CableSymbol> GetGroupCableSymbols(List<ISchemeSymbol> symbols)
         {
-            List<int> groupCableIds = new List<int>();
-            groups.ForEach(g=>groupCableIds.AddRange(g.CableIds));
-            groupCableIds = groupCableIds.Distinct().ToList();
-            List<CableSymbol> cableSymbols = new List<CableSymbol>(groupCableIds.Count);
-            groupCableIds.ForEach(cableId=>cableSymbols.Add(cableSymbolById[cableId]));
+            List<int> cableIds = new List<int>();
+            symbols.ForEach(g=>cableIds.AddRange(g.CableIds));
+            cableIds = cableIds.Distinct().ToList();
+            List<CableSymbol> cableSymbols = new List<CableSymbol>(cableIds.Count);
+            cableIds.ForEach(cableId=>cableSymbols.Add(cableSymbolById[cableId]));
             return cableSymbols;
         }
 
@@ -513,12 +533,12 @@ namespace OutsideConnectionsSchema
             return offsetBeforeFirstGroup;
         }
 
-        private List<VerticalConnection> GetVerticalConnections(List<SymbolGroup> topGroups, List<SymbolGroup> bottomGroups)
+        private List<VerticalConnection> GetVerticalConnections(List<ISchemeSymbol> topSymbols, List<ISchemeSymbol> bottomSymbols)
         {
             List<VerticalConnection> verticalConnections = new List<VerticalConnection>();
-            foreach (SymbolGroup topGroup in topGroups)
+            foreach (ISchemeSymbol topGroup in topSymbols)
             {
-                List<int> mateBottomGroupId = bottomGroups.FindAll(g => g.CableIds.Intersect(topGroup.CableIds).Any()).Select(bg=>bg.Id).ToList();
+                List<int> mateBottomGroupId = bottomSymbols.FindAll(g => g.CableIds.Intersect(topGroup.CableIds).Any()).Select(bg=>bg.Id).ToList();
                 if (mateBottomGroupId.Count == 0)
                     continue;
                 if (verticalConnections.Count == 0)
@@ -526,37 +546,37 @@ namespace OutsideConnectionsSchema
                 else
                 {
                     VerticalConnection lastVerticalConnection = verticalConnections.Last();
-                    if (lastVerticalConnection.BottomGroupIds.SequenceEqual(mateBottomGroupId))
-                        lastVerticalConnection.TopGroupIds.Add(topGroup.Id);
+                    if (lastVerticalConnection.BottomSymbolIds.SequenceEqual(mateBottomGroupId))
+                        lastVerticalConnection.TopSymbolIds.Add(topGroup.Id);
                     else
                         verticalConnections.Add(new VerticalConnection(new List<int>() { topGroup.Id }, mateBottomGroupId, gridStep));
                 }
             }
-            verticalConnections.ForEach(vc => vc.SetGroups(groupById));
+            verticalConnections.ForEach(vc => vc.SetSymbols(symbolById));
             verticalConnections.ForEach(vc => vc.SetVerticalCableSymbols(cableSymbolById));
             return verticalConnections;
         }
 
-        private Dictionary<int, double> GetMinHorizontalOffsetsBetweenGroups(List<SymbolGroup> groups)
+        private Dictionary<int, double> GetMinHorizontalOffsetsBetweenGroups(List<ISchemeSymbol> symbols)
         {
-            int groupCount = groups.Count;
-            List<IEnumerable<int>> groupConnectingCables = new List<IEnumerable<int>>(groupCount - 1); // кабели между групами, по порядку
+            int groupCount = symbols.Count;
+            List<IEnumerable<int>> symbolConnectingCables = new List<IEnumerable<int>>(groupCount - 1); // кабели между групами, по порядку
             Dictionary<int, double>  horizontalOffsetById = new Dictionary<int, double>(groupCount);
-            horizontalOffsetById.Add(groups.First().Id, groups.First().LeftMargin);
+            horizontalOffsetById.Add(symbols.First().Id, symbols.First().LeftMargin);
             if (groupCount > 1)
             {
                 for (int i = 1; i < groupCount; i++)
                 {
-                    SymbolGroup leftGroup = groups[i - 1];
-                    SymbolGroup rightGroup = groups[i];
-                    groupConnectingCables.Add(leftGroup.CableIds.Intersect(rightGroup.CableIds));
-                    double offset = leftGroup.RightMargin + rightGroup.LeftMargin + gridStep;
-                    foreach (int cableId in groupConnectingCables[i - 1])
+                    ISchemeSymbol leftSymbol = symbols[i - 1];
+                    ISchemeSymbol rightSymbol = symbols[i];
+                    symbolConnectingCables.Add(leftSymbol.CableIds.Intersect(rightSymbol.CableIds));
+                    double offset = leftSymbol.RightMargin + rightSymbol.LeftMargin + gridStep;
+                    foreach (int cableId in symbolConnectingCables[i - 1])
                     {
-                        double cableOffset = cableSymbolById[cableId].Size.Width + leftGroup.RightMargin + rightGroup.LeftMargin + gridStep * 2;
+                        double cableOffset = cableSymbolById[cableId].Size.Width + leftSymbol.RightMargin + rightSymbol.LeftMargin + gridStep * 2;
                         offset = Math.Max(cableOffset, offset);
                     }
-                    horizontalOffsetById.Add(groups[i].Id, offset);
+                    horizontalOffsetById.Add(symbols[i].Id, offset);
                 }
             }
             return horizontalOffsetById;
@@ -568,21 +588,21 @@ namespace OutsideConnectionsSchema
             double startOrdinate = sheet.MoveDown(placePosition.Y, Size.Height / 2);
             double bottomGroupOrdinate = sheet.MoveUp(startOrdinate, bottomGroupsOffset);
             double topGroupOrdinate = sheet.MoveUp(startOrdinate, topGroupsOffset);
-            PlaceGroups(sheet, graphic, e3group, text, topGroupHorizontalOffsetById, startAbsciss, topGroupOrdinate);
-            PlaceGroups(sheet, graphic, e3group, text, bottomGroupHorizontalOffsetById, startAbsciss, bottomGroupOrdinate);
+            PlaceSymbols(sheet, graphic, e3group, text, topGroupHorizontalOffsetById, startAbsciss, topGroupOrdinate);
+            PlaceSymbols(sheet, graphic, e3group, text, bottomGroupHorizontalOffsetById, startAbsciss, bottomGroupOrdinate);
             PlaceCableSymbols(sheet, graphic, e3group, text, startAbsciss, topGroupOrdinate, bottomGroupOrdinate);
             PlaceConnectionLines(sheet, graphic, topGroupOrdinate, bottomGroupOrdinate);
         }
 
-        private void PlaceGroups(Sheet sheet, Graphic graphic, Group e3group, E3Text text, Dictionary<int, double> horizontalOffsetById, double startAbsciss, double groupOrdinate)
+        private void PlaceSymbols(Sheet sheet, Graphic graphic, Group e3group, E3Text text, Dictionary<int, double> horizontalOffsetById, double startAbsciss, double groupOrdinate)
         {
             double offset = 0;
             foreach (int id in horizontalOffsetById.Keys)
             {
-                SymbolGroup group = groupById[id];
+                ISchemeSymbol symbol = symbolById[id];
                 offset += horizontalOffsetById[id];
                 double absciss = sheet.MoveRight(startAbsciss, offset);
-                group.Place(new Point(absciss, groupOrdinate), sheet, graphic, e3group, text);
+                symbol.Place(new Point(absciss, groupOrdinate), sheet, graphic, e3group, text);
             }
         }
 
@@ -593,14 +613,14 @@ namespace OutsideConnectionsSchema
                 CableSymbol cableSymbol = cableSymbolById[cableId];
                 if (cableSymbol.Orientation == Orientation.Horizontal)
                 {
-                    List<int> groupIds = groupIdsByCableId[cableId];
+                    List<int> groupIds = symbolIdsByCableId[cableId];
                     groupIds.Sort((id1,id2) => GetGroupPosition(id1).CompareTo(GetGroupPosition(id2)));
-                    SymbolGroup firstGroup = groupById[groupIds.First()];
-                    SymbolGroup secondGroup = groupById[groupIds.Last()];
-                    double firstPointX = sheet.MoveRight(firstGroup.PlacedPosition.X, firstGroup.RightMargin);
-                    double y = (firstGroup.Level == Level.Bottom) ? sheet.MoveDown(bottomGroupOrdinate, bottomGroupBottomMargin) : sheet.MoveDown (topGroupOrdinate, topGroupBottomMargin);
+                    ISchemeSymbol firstSymbol = symbolById[groupIds.First()];
+                    ISchemeSymbol secondSymbol = symbolById[groupIds.Last()];
+                    double firstPointX = sheet.MoveRight(firstSymbol.PlacedPosition.X, firstSymbol.RightMargin);
+                    double y = (firstSymbol.Level == Level.Bottom) ? sheet.MoveDown(bottomGroupOrdinate, bottomGroupBottomMargin) : sheet.MoveDown (topGroupOrdinate, topGroupBottomMargin);
                     Point firstPoint = new Point (firstPointX, y);
-                    double secondPointX = sheet.MoveLeft(secondGroup.PlacedPosition.X, secondGroup.LeftMargin);
+                    double secondPointX = sheet.MoveLeft(secondSymbol.PlacedPosition.X, secondSymbol.LeftMargin);
                     Point secondPoint = new Point(secondPointX, y);
                     double x = (firstPoint.X + secondPoint.X) / 2;
                     double cableSymbolHalfHeight = cableSymbol.Size.Height / 2;
@@ -610,9 +630,9 @@ namespace OutsideConnectionsSchema
             }
             if (topGroupHorizontalOffsetById.Count > 0)
             {
-                double top = groupById[topGroupHorizontalOffsetById.Keys.First()].PlacedPosition.Y;
-                SymbolGroup bottomGroup = groupById[bottomGroupHorizontalOffsetById.Keys.First()];
-                double bottom = sheet.MoveUp(bottomGroup.PlacedPosition.Y, bottomGroup.TopMargin);
+                double top = symbolById[topGroupHorizontalOffsetById.Keys.First()].PlacedPosition.Y;
+                ISchemeSymbol bottomSymbol = symbolById[bottomGroupHorizontalOffsetById.Keys.First()];
+                double bottom = sheet.MoveUp(bottomSymbol.PlacedPosition.Y, bottomSymbol.TopMargin);
                 double center = (top + bottom) / 2;
                 foreach (VerticalConnection verticalConnection in verticalConnections)
                     foreach (CableSymbol cableSymbol in verticalConnection.VerticalCableSymbols)
@@ -627,25 +647,25 @@ namespace OutsideConnectionsSchema
         {
             double lineHeight = 0.2;
             int sheetId = sheet.Id;
-            foreach (SymbolGroup symbolGroup in groupById.Values)
+            foreach (ISchemeSymbol symbol in symbolById.Values)
             {
-                List<CableLayout> bottomLayouts = symbolGroup.CableLayoutById.Values.Where(cl => cl.Level == Level.Bottom).ToList();
+                List<CableLayout> bottomLayouts = symbol.CableLayoutById.Values.Where(cl => cl.Level == Level.Bottom).ToList();
                 int bottomLayoutsCount = bottomLayouts.Count();
                 if (bottomLayoutsCount > 0)
                 {
-                    double lastCableLayoutY = (symbolGroup.Level == Level.Bottom) ? sheet.MoveDown(bottomGroupOrdinate, bottomGroupBottomMargin) : sheet.MoveDown(topGroupOrdinate, topGroupBottomMargin);
+                    double lastCableLayoutY = (symbol.Level == Level.Bottom) ? sheet.MoveDown(bottomGroupOrdinate, bottomGroupBottomMargin) : sheet.MoveDown(topGroupOrdinate, topGroupBottomMargin);
                     List<CableSymbol> bottomSymbols = bottomLayouts.Select(bl => cableSymbolById[bl.Id]).ToList();
                     bottomSymbols.Sort((bs1, bs2) => bs1.PlacedPosition.X.CompareTo(bs2.PlacedPosition.X));
                     List<List<double>> connectionAbscisses = new List<List<double>>(bottomLayoutsCount);
                     foreach (CableSymbol cableSymbol in bottomSymbols)
-                        connectionAbscisses.Add(GetAbscisses(cableSymbol.PlacedPosition.X, symbolGroup.CableLayoutById[cableSymbol.CableId]));
+                        connectionAbscisses.Add(GetAbscisses(cableSymbol.PlacedPosition.X, symbol.CableLayoutById[cableSymbol.CableId]));
                     List<int> maxPositions = new List<int>(bottomLayoutsCount);
                     connectionAbscisses.ForEach(l => maxPositions.Add(l.Count));
-                    Dictionary<int, double> abscissesByCableId = GetAbscissesByCableId(maxPositions, connectionAbscisses, bottomSymbols, bottomLayouts, symbolGroup);
+                    Dictionary<int, double> abscissesByCableId = GetAbscissesByCableId(maxPositions, connectionAbscisses, bottomSymbols, bottomLayouts, symbol);
                     foreach (int cableId in abscissesByCableId.Keys)
                     {
                         double absciss = abscissesByCableId[cableId];
-                        CableLayout cableLayout = symbolGroup.CableLayoutById[cableId];
+                        CableLayout cableLayout = symbol.CableLayoutById[cableId];
                         double cableLayoutY = cableLayout.PlacedPoints.First().Y;
                         if (cableLayout.StartOffsets.Count > 1)
                             graphic.CreateArc(sheetId, absciss, cableLayoutY, radius, 180, 0, lineHeight, connectionColorIndex);
@@ -656,7 +676,7 @@ namespace OutsideConnectionsSchema
                     {
                         CableSymbol cableSymbol = bottomHorizontalSymbols.First();
                         int cableId = cableSymbol.CableId;
-                        CableLayout cableLayout = symbolGroup.CableLayoutById[cableId];
+                        CableLayout cableLayout = symbol.CableLayoutById[cableId];
                         double firstLayoutPlacedY = cableLayout.PlacedPoints.First().Y;
                         if (cableLayout.StartOffsets.Count > 1)
                             firstLayoutPlacedY = sheet.MoveDown(firstLayoutPlacedY, radius);
@@ -667,14 +687,14 @@ namespace OutsideConnectionsSchema
                         CableSymbol firstCableSymbol = bottomHorizontalSymbols.First();
                         int firstCableId = firstCableSymbol.CableId;
                         double firstAbsciss = abscissesByCableId[firstCableId];
-                        CableLayout firstCableLayout = symbolGroup.CableLayoutById[firstCableId];
+                        CableLayout firstCableLayout = symbol.CableLayoutById[firstCableId];
                         double firstLayoutPlacedY = firstCableLayout.PlacedPoints.First().Y;
                         if (firstCableLayout.StartOffsets.Count > 1)
                             firstLayoutPlacedY = sheet.MoveDown(firstLayoutPlacedY, radius);
                         CableSymbol secondCableSymbol = bottomHorizontalSymbols.Last();
                         int secondCableId = secondCableSymbol.CableId;
                         double secondAbsciss = abscissesByCableId[secondCableId];
-                        CableLayout secondCableLayout = symbolGroup.CableLayoutById[secondCableId];
+                        CableLayout secondCableLayout = symbol.CableLayoutById[secondCableId];
                         double secondLayoutPlacedY = secondCableLayout.PlacedPoints.First().Y;
                         if (secondCableLayout.StartOffsets.Count > 1)
                             secondLayoutPlacedY = sheet.MoveDown(secondLayoutPlacedY, radius);
@@ -702,7 +722,7 @@ namespace OutsideConnectionsSchema
                                 turningLayoutPlacedY = firstLayoutPlacedY;
                             }
                             CreateStraightConnectingLine(sheet, graphic, lineHeight, sheetId, abscissesByCableId, straightLayouPlacedY, straightSymbol);
-                            CreateTurningConnectingLine(sheet, graphic, lineHeight, sheetId, abscissesByCableId, turningLayoutPlacedY, turningSymbol, symbolGroup);
+                            CreateTurningConnectingLine(sheet, graphic, lineHeight, sheetId, abscissesByCableId, turningLayoutPlacedY, turningSymbol, symbol);
                         }
                     }
                     IEnumerable<CableSymbol> bottomVerticalSymbols = bottomSymbols.Where(bs => bs.Orientation == Orientation.Vertical);
@@ -716,11 +736,11 @@ namespace OutsideConnectionsSchema
                         double centerY = (lastCableLayoutY + symbolY) / 2;
                         double leftTurnY = sheet.MoveDown(centerY, (leftSymbols.Count - 1) * gridStep / 2);
                         double rightTurnY = sheet.MoveDown(centerY, (rightSymbols.Count - 1) * gridStep / 2);
-                        PlaceSideSymbolsConnectionLine(symbolGroup, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, leftSymbols, leftTurnY, Level.Top);
-                        PlaceSideSymbolsConnectionLine(symbolGroup, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, rightSymbols, rightTurnY, Level.Top);
+                        PlaceSideSymbolsConnectionLine(symbol, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, leftSymbols, leftTurnY, Level.Top);
+                        PlaceSideSymbolsConnectionLine(symbol, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, rightSymbols, rightTurnY, Level.Top);
                     }
                 }
-                List<CableLayout> topLayouts = symbolGroup.CableLayoutById.Values.Where(cl => cl.Level == Level.Top).ToList();
+                List<CableLayout> topLayouts = symbol.CableLayoutById.Values.Where(cl => cl.Level == Level.Top).ToList();
                 int topLayoutsCount = topLayouts.Count();
                 if (topLayoutsCount > 0)
                 {
@@ -729,14 +749,14 @@ namespace OutsideConnectionsSchema
                     topSymbols.Sort((ts1, ts2) => ts1.PlacedPosition.X.CompareTo(ts2.PlacedPosition.X));
                     List<List<double>> connectionAbscisses = new List<List<double>>(bottomLayoutsCount);
                     foreach (CableSymbol cableSymbol in topSymbols)
-                        connectionAbscisses.Add(GetAbscisses(cableSymbol.PlacedPosition.X, symbolGroup.CableLayoutById[cableSymbol.CableId]));
+                        connectionAbscisses.Add(GetAbscisses(cableSymbol.PlacedPosition.X, symbol.CableLayoutById[cableSymbol.CableId]));
                     List<int> maxPositions = new List<int>(topLayoutsCount);
                     connectionAbscisses.ForEach(l => maxPositions.Add(l.Count));
-                    Dictionary<int, double> abscissesByCableId = GetAbscissesByCableId(maxPositions, connectionAbscisses, topSymbols, topLayouts, symbolGroup);
+                    Dictionary<int, double> abscissesByCableId = GetAbscissesByCableId(maxPositions, connectionAbscisses, topSymbols, topLayouts, symbol);
                     foreach (int cableId in abscissesByCableId.Keys)
                     {
                         double absciss = abscissesByCableId[cableId];
-                        CableLayout cableLayout = symbolGroup.CableLayoutById[cableId];
+                        CableLayout cableLayout = symbol.CableLayoutById[cableId];
                         double cableLayoutY = cableLayout.PlacedPoints.First().Y;
                         if (cableLayout.StartOffsets.Count > 1)
                             graphic.CreateArc(sheetId, absciss, cableLayoutY, radius, 0, 180, lineHeight, connectionColorIndex);
@@ -744,27 +764,27 @@ namespace OutsideConnectionsSchema
                     double centerX = (topSymbols.Min(ts => ts.PlacedPosition.X) + topSymbols.Max(ts => ts.PlacedPosition.X)) / 2;
                     List<CableSymbol> leftSymbols = topSymbols.Where(ts => ts.PlacedPosition.X <= abscissesByCableId[ts.CableId]).ToList();
                     List<CableSymbol> rightSymbols = topSymbols.Where(ts => ts.PlacedPosition.X > abscissesByCableId[ts.CableId]).ToList();
-                    PlaceSideSymbolsConnectionLine(symbolGroup, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, leftSymbols, lastCableLayoutY, Level.Bottom);
-                    PlaceSideSymbolsConnectionLine(symbolGroup, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, rightSymbols, lastCableLayoutY, Level.Bottom);
+                    PlaceSideSymbolsConnectionLine(symbol, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, leftSymbols, lastCableLayoutY, Level.Bottom);
+                    PlaceSideSymbolsConnectionLine(symbol, sheet, graphic, lineHeight, sheetId, abscissesByCableId, centerX, rightSymbols, lastCableLayoutY, Level.Bottom);
                 }
             }
         }
 
-        private void PlaceSideSymbolsConnectionLine(SymbolGroup symbolGroup, Sheet sheet, Graphic graphic, double lineHeight, int sheetId, Dictionary<int, double> abscissesByCableId, double centerX, List<CableSymbol> symbols, double turnY, Level level)
+        private void PlaceSideSymbolsConnectionLine(ISchemeSymbol symbol, Sheet sheet, Graphic graphic, double lineHeight, int sheetId, Dictionary<int, double> abscissesByCableId, double centerX, List<CableSymbol> cableSymbols, double turnY, Level level)
         {
-            int symbolsCount = symbols.Count;
+            int symbolsCount = cableSymbols.Count;
             if (symbolsCount > 0)
             {
-                symbols.Sort((bs1, bs2) => Math.Abs(bs1.PlacedPosition.X - centerX).CompareTo(Math.Abs(bs2.PlacedPosition.X - centerX))); // сортировка по удаленности от центра
-                foreach (CableSymbol symbol in symbols)
+                cableSymbols.Sort((bs1, bs2) => Math.Abs(bs1.PlacedPosition.X - centerX).CompareTo(Math.Abs(bs2.PlacedPosition.X - centerX))); // сортировка по удаленности от центра
+                foreach (CableSymbol cableSymbol in cableSymbols)
                 {
-                    CableLayout cableLayout = symbolGroup.CableLayoutById[symbol.CableId];
+                    CableLayout cableLayout = symbol.CableLayoutById[cableSymbol.CableId];
                     double layoutY = cableLayout.PlacedPoints.First().Y;
                     if (cableLayout.StartOffsets.Count > 1)
                         layoutY = (level == Level.Top) ? sheet.MoveDown(layoutY, radius) : sheet.MoveUp(layoutY, radius);
-                    double absciss = abscissesByCableId[symbol.CableId];
-                    double symbolX = symbol.PlacedPosition.X;
-                    double symbolY = (level == Level.Top) ? sheet.MoveUp(symbol.PlacedPosition.Y, symbol.Size.Height / 2) : sheet.MoveDown(symbol.PlacedPosition.Y, symbol.Size.Height / 2);
+                    double absciss = abscissesByCableId[cableSymbol.CableId];
+                    double symbolX = cableSymbol.PlacedPosition.X;
+                    double symbolY = (level == Level.Top) ? sheet.MoveUp(cableSymbol.PlacedPosition.Y, cableSymbol.Size.Height / 2) : sheet.MoveDown(cableSymbol.PlacedPosition.Y, cableSymbol.Size.Height / 2);
                     if (absciss == symbolX)
                         graphic.CreateLine(sheetId, absciss, layoutY, absciss, symbolY, lineHeight, connectionColorIndex);
                     else
@@ -787,19 +807,19 @@ namespace OutsideConnectionsSchema
             graphic.CreateLine(sheetId, symbolX, symbolY, absciss, symbolY, lineHeight, connectionColorIndex);
         }
 
-        private void CreateTurningConnectingLine(Sheet sheet, Graphic graphic, double lineHeight, int sheetId, Dictionary<int, double> abscissesByCableId, double lastCableLayoutY, CableSymbol cableSymbol, SymbolGroup symbolGroup)
+        private void CreateTurningConnectingLine(Sheet sheet, Graphic graphic, double lineHeight, int sheetId, Dictionary<int, double> abscissesByCableId, double lastCableLayoutY, CableSymbol cableSymbol, ISchemeSymbol symbol)
         {
             double absciss = abscissesByCableId[cableSymbol.CableId];
             double symbolX, turnX;
             if (absciss > cableSymbol.PlacedPosition.X)
             {
                 symbolX = sheet.MoveRight(cableSymbol.PlacedPosition.X, cableSymbol.Size.Width / 2);
-                turnX = sheet.MoveLeft(symbolGroup.PlacedPosition.X, symbolGroup.LeftMargin + gridStep);
+                turnX = sheet.MoveLeft(symbol.PlacedPosition.X, symbol.LeftMargin + gridStep);
             }
             else
             {
                 symbolX = sheet.MoveLeft(cableSymbol.PlacedPosition.X, cableSymbol.Size.Width / 2);
-                turnX = sheet.MoveRight(symbolGroup.PlacedPosition.X, symbolGroup.RightMargin + gridStep);
+                turnX = sheet.MoveRight(symbol.PlacedPosition.X, symbol.RightMargin + gridStep);
             }
             double symbolY = cableSymbol.PlacedPosition.Y;
             graphic.CreateLine(sheetId, absciss, lastCableLayoutY, turnX, lastCableLayoutY, lineHeight, connectionColorIndex);
@@ -829,7 +849,7 @@ namespace OutsideConnectionsSchema
             return abscisses;
         }
 
-        private Dictionary<int, double> GetAbscissesByCableId(List<int> maxPositions, List<List<double>> connectionAbscisses, List<CableSymbol> symbols, List<CableLayout> layouts, SymbolGroup symbolGroup)
+        private Dictionary<int, double> GetAbscissesByCableId(List<int> maxPositions, List<List<double>> connectionAbscisses, List<CableSymbol> symbols, List<CableLayout> layouts, ISchemeSymbol symbolGroup)
         {
             List<int> positions = new List<int>(maxPositions.Count);
             maxPositions.ForEach(mp=>positions.Add(0));
@@ -883,7 +903,7 @@ namespace OutsideConnectionsSchema
             return false;
         }
 
-        private static int GetFine(List<int> positions, List<List<double>> connectionAbscisses, List<CableSymbol> symbols, List<CableLayout> bottomLayouts, SymbolGroup symbolGroup, Dictionary<int, Tuple<double, double>> minMaxByCableId)
+        private static int GetFine(List<int> positions, List<List<double>> connectionAbscisses, List<CableSymbol> cableSymbols, List<CableLayout> bottomLayouts, ISchemeSymbol symbol, Dictionary<int, Tuple<double, double>> minMaxByCableId)
         {
             int fine;
             int positionsCount = positions.Count;
@@ -894,7 +914,7 @@ namespace OutsideConnectionsSchema
             int intersectionCount = 0;
             for (int i = 0; i < positionsCount; i++)
             {
-                double placedX = symbols[i].PlacedPosition.X;
+                double placedX = cableSymbols[i].PlacedPosition.X;
                 double absciss = abscisses[i];
                 if (placedX < absciss)
                     intersectionCount+= abscisses.Where(a => (a > placedX && a < absciss)).Count();
@@ -905,8 +925,8 @@ namespace OutsideConnectionsSchema
             double distanceFromCenterSum = 0;
             for (int i = 0; i < positionsCount; i++)
             {
-                int cableId = symbols[i].CableId;
-                CableLayout layout = symbolGroup.CableLayoutById[cableId];
+                int cableId = cableSymbols[i].CableId;
+                CableLayout layout = symbol.CableLayoutById[cableId];
                 double layoutOffset = layout.verticalOffset;
                 IEnumerable<int> layoutOuterOffsetIds = bottomLayouts.Where(bl => bl.verticalOffset > layoutOffset).Select(bl=>bl.Id);
                 double absciss = abscisses[i];
@@ -915,7 +935,7 @@ namespace OutsideConnectionsSchema
             }
             int straightConenctionCount = 0;
             for (int i = 0; i < positionsCount; i++)
-                if (symbols[i].PlacedPosition.X == abscisses[i])
+                if (cableSymbols[i].PlacedPosition.X == abscisses[i])
                     straightConenctionCount++;
             fine = overlayCount * 10000 + intersectionCount * 1000 + horizontalIntersectionCount * 100 - straightConenctionCount * 10 + (int)distanceFromCenterSum;
             return fine;

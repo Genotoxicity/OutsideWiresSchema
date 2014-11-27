@@ -1,19 +1,26 @@
 ﻿<Window x:Class="OutsideConnectionsSchema.UI"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="СВП" Height="150" Width="300">
+        Title="СВП" Height="234" Width="300">
     <Grid Name="grid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="60" />
         </Grid.RowDefinitions>
-        <Button Name="DoButton" Content="Сделать" HorizontalAlignment="Center" VerticalAlignment="Center"  Width="75" Height="25" Click="DoButton_Click" Grid.Row="1"/>
-        <GroupBox Header="Проект:" SnapsToDevicePixels="True">
+        <Button Name="DoButton" Content="Сделать" HorizontalAlignment="Center" VerticalAlignment="Center"  Width="76" Height="25" Click="DoButton_Click" Grid.Row="2"/>
+        <GroupBox Header="Проект:" SnapsToDevicePixels="True" Grid.Row="0">
             <RichTextBox Name="richTextBox" HorizontalAlignment="Center" VerticalAlignment="Center" BorderThickness="0" IsHitTestVisible="False">
                 <FlowDocument>
                     <Paragraph FontSize="14" TextAlignment="Center"/>
                 </FlowDocument>
             </RichTextBox>
+        </GroupBox>
+        <GroupBox Header="Действие" Grid.Row="1">
+            <StackPanel HorizontalAlignment="Stretch">
+                <RadioButton GroupName="Type" Content="Создать схему" IsChecked="True" Margin="10,5,0,5" Name="Scheme"  Checked="RadioButton_Checked"/>
+                <RadioButton GroupName="Type" Content="Добавить перечень"  Margin="10,5,0,5" Name="Enumeration" Checked="RadioButton_Checked"/>
+            </StackPanel>
         </GroupBox>
     </Grid>
 </Window>

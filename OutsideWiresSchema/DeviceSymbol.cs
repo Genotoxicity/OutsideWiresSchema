@@ -8,7 +8,6 @@ namespace OutsideConnectionsSchema
 {
     class DeviceSymbol
     {
-        private int id;
         private List<SymbolPin> topPins;
         private List<SymbolPin> bottomPins;
         private E3Font bigFont;
@@ -22,7 +21,16 @@ namespace OutsideConnectionsSchema
         private double halfGridStep;
         private double skewLineOffset;
         private bool isTerminal;
-        
+        private int id;
+
+        public int Id
+        {
+            get
+            {
+                return id;
+            }
+        }
+
         public List<int> ConnectionIds { get; private set; }
 
         public string Assignment { get; private set; }
@@ -54,7 +62,7 @@ namespace OutsideConnectionsSchema
             id = device.Id;
             Assignment = String.Intern(device.Assignment);
             if (String.IsNullOrEmpty(Assignment) && device.GetAttributeValue("IncludeInOWS").Equals("1"))
-                Assignment = String.Intern("AssignmentForConnectiongBox");
+                Assignment = String.Intern("AssignmentForConnectingBox");
             Name = device.Name;
             isTerminal = device.IsTerminal();
             if (isTerminal)
@@ -293,5 +301,7 @@ namespace OutsideConnectionsSchema
         {
             return ((int)value / 2 + 1) * 2;
         }
+
+
     }
 }

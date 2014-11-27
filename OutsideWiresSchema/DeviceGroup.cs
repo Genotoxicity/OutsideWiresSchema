@@ -6,18 +6,38 @@ using KSPE3Lib;
 
 namespace OutsideConnectionsSchema
 {
-    class SymbolGroup
+    class DeviceGroup : ISchemeSymbol
     {
+        private int id;
+        private int groupPosition;
         private double gridStep;
         private double width;
         private double assignmentWidth;
         private string assignment;
         private Dictionary<int, int> matePositionByCableId;
-        private int groupPosition;
         private List<DeviceSymbol> deviceSymbols;
+        private List<int> cableIds;
         private Dictionary<int, CableLayout> cableLayoutById;
         private Dictionary<int, double> bottomCableVerticalOffsetByStep;
         private Dictionary<int, double> topCableVerticalOffsetByStep;
+
+        public int Id
+        {
+            get
+            {
+                return id;
+            }
+        }
+
+        public List<int> CableIds
+        {
+            get
+            {
+                return cableIds;
+            }
+        }
+
+        public Level Level { get; private set; }
 
         public double LeftMargin { get; private set; }
 
@@ -27,11 +47,27 @@ namespace OutsideConnectionsSchema
 
         public double BottomMargin { get; private set; }
 
-        public double SymbolsWidth
+        public string Assignment
+        {
+            get
+            {
+                return assignment;
+            }
+        }
+
+        public double OutlineWidth
         {
             get
             {
                 return width;
+            }
+        }
+
+        public double OutlineHeight
+        {
+            get
+            {
+                return deviceSymbols.Max(ds => ds.Size.Height);
             }
         }
 
@@ -43,13 +79,7 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public int Id { get; private set; }
-
-        public List<int> CableIds { get; private set; }
-
         public List<int> LoopIds { get; private set; }
-
-        public Level Level { get; private set; }
 
         public Dictionary<int, CableLayout> CableLayoutById
         {
@@ -69,12 +99,12 @@ namespace OutsideConnectionsSchema
 
         public Point PlacedPosition { get; private set; }
 
-        public SymbolGroup(int id)
+        public DeviceGroup(int id)
         {
             deviceSymbols = new List<DeviceSymbol>();
-            CableIds = new List<int>();
+            cableIds = new List<int>();
             LoopIds = new List<int>();
-            Id = id;
+            this.id = id;
             width = 0;
             gridStep = 4;
         }
@@ -85,19 +115,19 @@ namespace OutsideConnectionsSchema
             {
                 deviceSymbols.Add(deviceSymbol);
                 assignment = deviceSymbol.Assignment;
-                CableIds = deviceSymbol.CableIds;
+                cableIds = deviceSymbol.CableIds;
                 return true;
             }
             if (!assignment.Equals(deviceSymbol.Assignment))
                 return false;
-            if (!CableIds.Intersect<int>(deviceSymbol.CableIds).Any<int>())
+            if (!cableIds.Intersect<int>(deviceSymbol.CableIds).Any<int>())
                 return false;
             if (IsConnectionBetweenSymbolsExist(deviceSymbol))
                 return false;
             deviceSymbols.Add(deviceSymbol);
             foreach (int cableId in deviceSymbol.CableIds)
-                if (!CableIds.Contains(cableId))
-                    CableIds.Add(cableId);
+                if (!cableIds.Contains(cableId))
+                    cableIds.Add(cableId);
             return true;
         }
 
@@ -137,7 +167,7 @@ namespace OutsideConnectionsSchema
 
         private List<int> PlaceAssignmentFrame(Point placePosition, Sheet sheet, Graphic graphic, E3Text text)
         {
-            if (String.IsNullOrEmpty(assignment) || assignment.Equals("AssignmentForConnectiongBox"))
+            if (String.IsNullOrEmpty(assignment) || assignment.Equals("AssignmentForConnectingBox"))
                 return new List<int>(0);
             int sheetId = sheet.Id;
             List<int> ids = new List<int>(2);
@@ -160,10 +190,10 @@ namespace OutsideConnectionsSchema
             return ids;
         }
 
-        public void CalculateGroupLayout(SchemeLayout layout, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
+        /*public void CalculateLayout(Scheme layout, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
         {
             SortSymbols();
-            cableLayoutById = new Dictionary<int, CableLayout>(CableIds.Count);
+            cableLayoutById = new Dictionary<int, CableLayout>(cableIds.Count);
             foreach (DeviceSymbol deviceSymbol in deviceSymbols)
             {
                 deviceSymbol.CalculateLayout(height);
@@ -194,6 +224,42 @@ namespace OutsideConnectionsSchema
             LeftMargin = ((minCablesOffset > 0) ? 0 : -minCablesOffset) + additionalAssignmentMargin;
             double maxCablesOffset = cableLayoutById.Values.Max(cl => cl.MaxOffset);
             RightMargin = ((width > maxCablesOffset) ? width : maxCablesOffset) + additionalAssignmentMargin;
+        }*/
+
+        public void CalculateLayout(SymbolScheme scheme, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
+        {
+            SortSymbols();
+            cableLayoutById = new Dictionary<int, CableLayout>(cableIds.Count);
+            foreach (DeviceSymbol deviceSymbol in deviceSymbols)
+            {
+                deviceSymbol.CalculateLayout(height);
+                foreach (SymbolPin topPin in deviceSymbol.TopPins)
+                    foreach (int cableId in topPin.CableIds)
+                    {
+                        if (!cableLayoutById.ContainsKey(cableId))
+                            cableLayoutById.Add(cableId, new CableLayout(cableId, Level.Top));
+                        cableLayoutById[cableId].AddOffset(new Point(width + topPin.HorizontalOffset, height));
+                    }
+                foreach (SymbolPin bottomPin in deviceSymbol.BottomPins)
+                    foreach (int cableId in bottomPin.CableIds)
+                    {
+                        if (!cableLayoutById.ContainsKey(cableId))
+                            cableLayoutById.Add(cableId, new CableLayout(cableId, Level.Bottom));
+                        cableLayoutById[cableId].AddOffset(new Point(width + bottomPin.HorizontalOffset, 0));
+                    }
+                width += deviceSymbol.Size.Width;
+            }
+            matePositionByCableId = scheme.GetMatePositionByCableId(Id);
+            groupPosition = scheme.GetGroupPosition(Id);
+            AdjustCableLayouts(cableLayoutById, cableSymbolById, cableInfoById);
+            assignmentWidth = text.GetTextLength("Шкаф " + assignment, new E3Font(height: 3));
+            TopMargin = height + gridStep * 2 + (topCableVerticalOffsetByStep.Count > 0 ? (topCableVerticalOffsetByStep.Last().Value - height) : 0);
+            BottomMargin = ((bottomCableVerticalOffsetByStep.Count > 0) ? bottomCableVerticalOffsetByStep.Last().Value : 0) + gridStep;
+            double additionalAssignmentMargin = (width > assignmentWidth) ? gridStep : (assignmentWidth - width + gridStep / 2);
+            double minCablesOffset = cableLayoutById.Values.Min(cl => cl.MinOffset);
+            LeftMargin = ((minCablesOffset > 0) ? 0 : -minCablesOffset) + additionalAssignmentMargin;
+            double maxCablesOffset = cableLayoutById.Values.Max(cl => cl.MaxOffset);
+            RightMargin = ((width > maxCablesOffset) ? width : maxCablesOffset) + additionalAssignmentMargin;
         }
 
         private void SortSymbols()
@@ -208,7 +274,7 @@ namespace OutsideConnectionsSchema
             List<CableLayout> bottomLeftHorizontalCableLayouts = new List<CableLayout>();
             List<CableLayout> bottomRightHorizontalCableLayouts = new List<CableLayout>();
             List<CableLayout> bottomVerticalCableLayouts = new List<CableLayout>();
-            foreach (int cableId in CableIds)
+            foreach (int cableId in cableIds)
             { 
                 CableLayout cableLayout = cableLayoutById[cableId];
                 if (cableLayout.Level == Level.Top)

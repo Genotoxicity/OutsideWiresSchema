@@ -1,4 +1,4 @@
 ﻿namespace OutsideConnectionsSchema
 {
-    enum Position { Left, Center, Right }
+    public enum Position { Left, Center, Right }
 }

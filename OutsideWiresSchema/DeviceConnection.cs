@@ -17,7 +17,7 @@ namespace OutsideConnectionsSchema
 
         public string Signal { get; private set; }
 
-        public DeviceConnection(int startDeviceId, string startPinName, int endDeviceId, string endPinName, int cableId, string signal )
+        public DeviceConnection(int startDeviceId, string startPinName, int endDeviceId, string endPinName, int cableId, string signal)
         {
             StartDeviceId = startDeviceId;
             StartPinName = String.Intern(startPinName);

@@ -65,18 +65,22 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="AssignmentReferenceSymbol.cs" />
     <Compile Include="CableInfo.cs" />
     <Compile Include="CableLayout.cs" />
     <Compile Include="CableSymbol.cs" />
     <Compile Include="Orientation.cs" />
     <Compile Include="DeviceConnection.cs" />
     <Compile Include="Position.cs" />
-    <Compile Include="Scheme.cs" />
+    <Compile Include="SchemeCreator.cs" />
     <Compile Include="DeviceSymbol.cs" />
-    <Compile Include="SchemeLayout.cs" />
+    <Compile Include="Scheme.cs" />
+    <Compile Include="ISchemeSymbol.cs" />
     <Compile Include="Script.cs" />
+    <Compile Include="ScriptType.cs" />
     <Compile Include="SpecificationScript.cs" />
-    <Compile Include="SymbolGroup.cs" />
+    <Compile Include="DeviceGroup.cs" />
+    <Compile Include="SymbolScheme.cs" />
     <Compile Include="VerticalConnection.cs" />
     <Page Include="UI.xaml">
       <Generator>MSBuild:Compile</Generator>
