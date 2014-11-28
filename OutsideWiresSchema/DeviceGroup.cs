@@ -6,7 +6,7 @@ using KSPE3Lib;
 
 namespace OutsideConnectionsSchema
 {
-    class DeviceGroup : ISchemeSymbol
+    class DeviceGroup
     {
         private int id;
         private int groupPosition;
@@ -226,7 +226,7 @@ namespace OutsideConnectionsSchema
             RightMargin = ((width > maxCablesOffset) ? width : maxCablesOffset) + additionalAssignmentMargin;
         }*/
 
-        public void CalculateLayout(SymbolScheme scheme, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
+        public void CalculateLayout(Scheme scheme, double height, Dictionary<int, CableSymbol> cableSymbolById, Dictionary<int, CableInfo> cableInfoById, E3Text text)
         {
             SortSymbols();
             cableLayoutById = new Dictionary<int, CableLayout>(cableIds.Count);

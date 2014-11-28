@@ -10,8 +10,8 @@ namespace OutsideConnectionsSchema
         public List<int> BottomSymbolIds { get; private set; }
         private Dictionary<int, double> offsetByCableId;
         private List<CableSymbol> verticalCableSymbols;
-        private List<ISchemeSymbol> topSymbols;
-        private List<ISchemeSymbol> bottomSymbols;
+        private List<DeviceGroup> topSymbols;
+        private List<DeviceGroup> bottomSymbols;
         private double cablesWidthSum;
         private double minCablesWidth;
         private double gridStep;
@@ -24,7 +24,7 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public List<ISchemeSymbol> TopSymbols
+        public List<DeviceGroup> TopSymbols
         {
             get
             {
@@ -32,7 +32,7 @@ namespace OutsideConnectionsSchema
             }
         }
 
-        public List<ISchemeSymbol> BottomSymbols
+        public List<DeviceGroup> BottomSymbols
         {
             get
             {
@@ -63,12 +63,12 @@ namespace OutsideConnectionsSchema
             this.gridStep = gridStep;
         }
 
-        public void SetSymbols(Dictionary<int, ISchemeSymbol> symbolById)
+        public void SetSymbols(Dictionary<int, DeviceGroup> symbolById)
         {
-            topSymbols = new List<ISchemeSymbol>(TopSymbolIds.Count);
+            topSymbols = new List<DeviceGroup>(TopSymbolIds.Count);
             foreach (int topGroupId in TopSymbolIds)
                 topSymbols.Add(symbolById[topGroupId]);
-            bottomSymbols = new List<ISchemeSymbol>(BottomSymbolIds.Count);
+            bottomSymbols = new List<DeviceGroup>(BottomSymbolIds.Count);
             foreach (int bottomGroupId in BottomSymbolIds)
                 bottomSymbols.Add(symbolById[bottomGroupId]);
         }
@@ -115,12 +115,12 @@ namespace OutsideConnectionsSchema
         {
             private Dictionary<int, int> optimalBottomPositionById;
             private Dictionary<int, int> optimalTopPositionById;
-            private List<ISchemeSymbol> topGroups;
-            private List<ISchemeSymbol> bottomGroups;
+            private List<DeviceGroup> topGroups;
+            private List<DeviceGroup> bottomGroups;
 
             private NaturalSortingStringComparer stringComparer;
 
-            public VerticalCableSymbolsComparer(List<ISchemeSymbol> topSymbols, List<ISchemeSymbol> bottomSymbols, Dictionary<int, int> bottomPositionById, Dictionary<int, int> topPositionById)
+            public VerticalCableSymbolsComparer(List<DeviceGroup> topSymbols, List<DeviceGroup> bottomSymbols, Dictionary<int, int> bottomPositionById, Dictionary<int, int> topPositionById)
             {
                 this.optimalBottomPositionById = bottomPositionById;
                 this.optimalTopPositionById = topPositionById;
