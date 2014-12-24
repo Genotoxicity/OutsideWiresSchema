@@ -580,7 +580,7 @@ namespace OutsideConnectionsSchema
             return horizontalOffsetById;
         }
 
-        public void Place(Sheet sheet, Graphic graphic, Group e3group, E3Text text, Point placePosition)
+        public void Place(NormalDevice device, Symbol symbol, Sheet sheet, Graphic graphic, Group e3group, E3Text text, Point placePosition)
         {
             double startAbsciss = sheet.MoveLeft(placePosition.X, Size.Width / 2);
             double startOrdinate = sheet.MoveDown(placePosition.Y, Size.Height / 2);
@@ -590,6 +590,59 @@ namespace OutsideConnectionsSchema
             PlaceSymbols(sheet, graphic, e3group, text, bottomGroupHorizontalOffsetById, startAbsciss, bottomGroupOrdinate);
             PlaceCableSymbols(sheet, graphic, e3group, text, startAbsciss, topGroupOrdinate, bottomGroupOrdinate);
             PlaceConnectionLines(sheet, graphic, topGroupOrdinate, bottomGroupOrdinate);
+            PlaceHeader(device, symbol, text, sheet);
+        }
+
+        private void PlaceHeader(NormalDevice device, Symbol symbol, E3Text text, Sheet sheet)
+        {
+            List<int> ids = new List<int>();
+            foreach (DeviceGroup deviceGroup in deviceGroupById.Values)
+                ids.AddRange(deviceGroup.DeviceSymbols.Select(ds => ds.Id));
+            double y = sheet.MoveDown(sheet.DrawingArea.Top, 20);
+            double x = sheet.MoveRight(sheet.DrawingArea.Left, 20);
+            int sheetId = sheet.Id;
+            foreach (int deviceId in ids)
+            {
+                device.Id = deviceId;
+                string parameter = device.GetAttributeValue("NAME_TEH_POZ");
+                if (String.IsNullOrEmpty(parameter))
+                    continue;
+                string placement = device.GetAttributeValue("Mesto_ust");
+                if (String.IsNullOrEmpty(placement))
+                    continue;
+                string function = device.GetAttributeValue("func");
+                if (String.IsNullOrEmpty(function))
+                    continue;
+                string alternativeDesignation = device.GetAttributeValue("poz.obozn.alt");
+                if (String.IsNullOrEmpty(alternativeDesignation))
+                    continue;
+                symbol.Load("СВП_вверх", null);
+                symbol.Id = symbol.Place(sheetId, x, y);
+                List<int> textIds = symbol.GetTextIdsOfType(122);
+                if (textIds.Count > 0 && !String.IsNullOrEmpty(parameter))
+                {
+                    text.Id = textIds.First();
+                    text.SetText(parameter);
+                }
+                textIds = symbol.GetTextIdsOfType(803);
+                if (textIds.Count > 0 && !String.IsNullOrEmpty(placement))
+                {
+                    text.Id = textIds.First();
+                    text.SetText(placement);
+                }
+                textIds = symbol.GetTextIdsOfType(502);
+                if (textIds.Count > 0 && !String.IsNullOrEmpty(function))
+                {
+                    text.Id = textIds.First();
+                    text.SetText(function);
+                }
+                textIds = symbol.GetTextIdsOfType(806);
+                if (textIds.Count > 0 && !String.IsNullOrEmpty(alternativeDesignation))
+                {
+                    text.Id = textIds.First();
+                    text.SetText(alternativeDesignation);
+                }
+            }
         }
 
         private void PlaceSymbols(Sheet sheet, Graphic graphic, Group e3group, E3Text text, Dictionary<int, double> horizontalOffsetById, double startAbsciss, double groupOrdinate)
@@ -857,26 +910,17 @@ namespace OutsideConnectionsSchema
             foreach (CableLayout cableLayout in symbolGroup.CableLayoutById.Values)
                 minMaxByCableId.Add(cableLayout.Id, new Tuple<double,double>(cableLayout.PlacedPoints.Min(p=>p.X), cableLayout.PlacedPoints.Max(p=>p.X)));
             int minFine = Int32.MaxValue;
-            int variantCount = 1;
-            foreach (int maxPosition in maxPositions)
+            int variantCount = 1000000;
+            do
             {
-                variantCount *= maxPosition;
-                if (variantCount > 1000000)
-                    break;
-            }
-            if (variantCount < 1000000)
-                do
+                int fine = GetFine(positions, connectionAbscisses, symbols, layouts, symbolGroup, minMaxByCableId);
+                if (fine < minFine)
                 {
-                    int fine = GetFine(positions, connectionAbscisses, symbols, layouts, symbolGroup, minMaxByCableId);
-                    if (fine < minFine)
-                    {
-                        minFine = fine;
-                        optimalPositions = new List<int>(positions);
-                    }
+                    minFine = fine;
+                    optimalPositions = new List<int>(positions);
                 }
-                while (NextVariant(positions, maxPositions, lastIndex));
-            else
-                optimalPositions = positions;
+            }
+            while (NextVariant(positions, maxPositions, lastIndex) && (variantCount--)>0);
             Dictionary<int, double> abscissesByCableId = new Dictionary<int, double>();
             for (int i = 0; i < optimalPositions.Count; i++)
             {

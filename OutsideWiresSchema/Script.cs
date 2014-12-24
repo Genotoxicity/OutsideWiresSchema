@@ -246,6 +246,8 @@ namespace OutsideConnectionsSchema
             double gridStep = 4;
             Group group = project.GetGroupById(0);
             Graphic graphic = project.GetGraphicById(0);
+            NormalDevice device = project.GetNormalDeviceById(0);
+            Symbol symbol = project.GetSymbolById(0);
             int sheetCount=1;
             CreateSheet(sheet, ref sheetCount);
             bool needToCreate = false;
@@ -262,7 +264,7 @@ namespace OutsideConnectionsSchema
                         CreateSheet(sheet, ref sheetCount);
                     else
                         needToCreate = true;
-                    scheme.Place(sheet, graphic, group, text, sheetCenter);
+                    scheme.Place(device, symbol, sheet, graphic, group, text, sheetCenter);
                     continue;
                 }
                 totalSchemeWidth += scheme.Size.Width + gridStep;
@@ -281,7 +283,7 @@ namespace OutsideConnectionsSchema
                     foreach (Scheme notPlacedScheme in notPlacedSchemes)
                     {
                         x = sheet.MoveRight(x, gap + notPlacedScheme.Size.Width / 2 );
-                        notPlacedScheme.Place(sheet, graphic, group, text, new Point(x, sheetCenter.Y));
+                        notPlacedScheme.Place(device, symbol, sheet, graphic, group, text, new Point(x, sheetCenter.Y));
                         x = sheet.MoveRight(x, notPlacedScheme.Size.Width / 2);
                     }
                     notPlacedSchemes.Clear();
@@ -300,7 +302,7 @@ namespace OutsideConnectionsSchema
                 foreach (Scheme notPlacedScheme in notPlacedSchemes)
                 {
                     x = sheet.MoveRight(x, gap + notPlacedScheme.Size.Width / 2);
-                    notPlacedScheme.Place(sheet, graphic, group, text, new Point(x, sheetCenter.Y));
+                    notPlacedScheme.Place(device, symbol, sheet, graphic, group, text, new Point(x, sheetCenter.Y));
                     x = sheet.MoveRight(x, notPlacedScheme.Size.Width / 2);
                 }
             }
